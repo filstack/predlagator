@@ -1,83 +1,214 @@
-# Telegram Sender Bot
+# Predlagator - Telegram Channel Broadcast Management System
 
-REST API сервис для автоматической отправки сообщений через Telegram с использованием библиотеки GramJS.
+🚀 Профессиональная платформа для управления массовыми рассылками по Telegram каналам с веб-интерфейсом, системой батчей, кампаний и продвинутой аналитикой.
 
-## Описание
+## 📋 Описание
 
-Telegram Sender Bot — это HTTP-сервер, предоставляющий REST API для отправки сообщений в Telegram. Сервис поддерживает отправку текстовых сообщений, медиафайлов (изображения, видео), а также комбинированных сообщений. Идеально подходит для автоматизации рассылок, уведомлений и интеграции Telegram в ваши бизнес-процессы.
+**Predlagator** — это комплексная система для управления broadcast-рассылками в Telegram. Платформа предоставляет полный цикл работы: от импорта каталога каналов до запуска, мониторинга и анализа результатов рассылочных кампаний.
 
-## Возможности
+Система разработана для операторов рассылок, маркетологов и администраторов, которым необходим профессиональный инструмент для массовой коммуникации через Telegram с соблюдением лимитов API и безопасностью аккаунтов.
 
-- ✉️ Отправка текстовых сообщений в Telegram
-- 🖼️ Отправка медиафайлов (изображения, видео)
-- 📎 Поддержка медиа через URL или base64
-- 👤 Работа с пользователями по username или peer ID
-- 🔍 Резолвинг username в peer ID
-- 📚 Встроенная Swagger документация
-- 🚀 Простой REST API интерфейс
-- 🔄 Автоматическое переподключение к Telegram
-- 🛡️ Обработка ошибок и валидация
+## ✨ Основные возможности
 
-## Технологии
+### 🎯 Управление каналами
+- 📊 Каталог Telegram каналов с фильтрацией и поиском
+- 🔍 Проверка доступности каналов (reachable/blocked/deleted)
+- 🏷️ Теги, категории и метаданные каналов
+- 📥 Импорт каналов из CSV/NDJSON
+- 🔗 Интеграция с tg-scrap для автоматического обновления
 
-- **Node.js** — runtime окружение
-- **Express** — веб-фреймворк для REST API
-- **GramJS (telegram)** — библиотека для работы с Telegram API
-- **Swagger** — документация API
-- **dotenv** — управление конфигурацией
+### 📦 Батчи и кампании
+- ✅ Создание батчей (групп каналов) для рассылок
+- 📋 Управление списками: добавление, удаление, клонирование
+- 📑 Шаблоны аудиторий для переиспользования
+- 🎨 Редактор сообщений с плейсхолдерами `{{username}}`, `{{category}}`
+- 🖼️ Поддержка медиа (URL, загрузка файлов, base64)
+- ⏰ Отложенный запуск кампаний по расписанию
 
-## Требования
+### ⚙️ Контроль доставки
+- 🚦 Настройка throttling (msg/sec, задержки)
+- 🔄 Retry политики с exponential backoff
+- 🌐 Поддержка прокси для обхода ограничений
+- 🎲 A/B тестирование вариантов сообщений
+- 🧪 Test mode (отправка себе) и Dry Run (симуляция)
 
-- Node.js версии 14.x или выше
-- npm или yarn
-- Telegram API credentials (API ID и API Hash)
-- Активная сессия Telegram (session string)
+### 📈 Мониторинг и аналитика
+- ⚡ Real-time лог событий (queued → sent → delivered/failed)
+- 📊 Дашборд с метриками: success rate, speed, error breakdown
+- ⏸️ Pause/Resume кампаний на лету
+- 📥 Экспорт отчетов в CSV/JSON
+- 🛡️ Auto-pause при превышении FLOOD_WAIT порога
 
-## Установка
+### 🔐 Безопасность и контроль
+- 👥 Role-based access control (Admin/Operator/Auditor)
+- 🔒 Шифрование Telegram session strings (AES-256)
+- 📝 Audit trail всех действий пользователей
+- 🚫 Opt-out список каналов с предотвращением рассылки
+- ⚠️ Автоматическая оценка рисков (Low/Medium/High)
+
+## 🛠️ Технологический стек
+
+### Frontend
+- ⚛️ **React 18** + **TypeScript** — современный UI
+- 🎨 **Vite** — быстрая сборка и hot reload
+- 🧩 **shadcn/ui** — красивые компоненты на Radix UI
+- 🎯 **Tailwind CSS** — utility-first стилизация
+- 📡 **Zustand** — легковесный state management
+- 🔗 **React Router** — клиентская маршрутизация
+- 📝 **React Hook Form** + **Zod** — валидация форм
+
+### Backend
+- 🟢 **Node.js** + **Express** — REST API сервер
+- 🗄️ **Prisma** — type-safe ORM для работы с БД
+- 📮 **BullMQ** + **Redis** — очереди задач
+- 📱 **GramJS** — клиент Telegram API
+- 🔑 **Jose** — JWT аутентификация
+- 🛡️ **Helmet** — security middleware
+- 🔄 **CORS** — кросс-доменные запросы
+
+### Инфраструктура
+- 🚀 **Vercel** — deployment frontend (free tier)
+- 💾 **Supabase/Neon** — PostgreSQL database
+- 🔴 **Redis** — job queue и кэш
+- 🖥️ **VPS/Railway** — backend workers
+
+## 📦 Требования
+
+- **Node.js** ≥ 18.x
+- **PostgreSQL** ≥ 14.x (Supabase/Neon/Railway)
+- **Redis** ≥ 7.x (для BullMQ)
+- **Telegram API credentials** (API ID, API Hash, Session String)
+- **Git** для клонирования репозитория
+
+## 🚀 Быстрый старт
 
 ### 1. Клонирование репозитория
 
 ```bash
-git clone <repository-url>
-cd бот_рассылка
+git clone https://github.com/filstack/predlagator.git
+cd predlagator
 ```
 
 ### 2. Установка зависимостей
 
+Установите зависимости для всех частей проекта:
+
 ```bash
+# Root dependencies
+npm install
+
+# Frontend
+cd frontend
+npm install
+
+# Backend
+cd ../backend
+npm install
+
+# Shared schemas
+cd ../shared
 npm install
 ```
 
-### 3. Настройка переменных окружения
+### 3. Настройка базы данных
 
-Создайте файл `.env` в корне проекта (или используйте существующий):
+Создайте PostgreSQL базу данных (Supabase/Neon/Railway) и настройте переменные окружения:
 
+**Backend** (`backend/.env`):
 ```env
-TELEGRAM_API_ID=your_api_id
-TELEGRAM_API_HASH=your_api_hash
-TELEGRAM_SESSION=your_session_string
-PORT=3000
+# Database
+DATABASE_URL="postgresql://user:password@host:5432/predlagator?schema=public"
+
+# Redis для очередей
+REDIS_URL="redis://localhost:6379"
+
+# Telegram API
+TELEGRAM_API_ID=12345678
+TELEGRAM_API_HASH=your_api_hash_here
+TELEGRAM_SESSION=your_session_string_here
+
+# JWT
+JWT_SECRET=your_secure_random_secret_key
+
+# Server
+PORT=4000
+NODE_ENV=development
 ```
 
-#### Как получить API ID и API Hash:
+**Frontend** (`frontend/.env`):
+```env
+VITE_API_URL=http://localhost:4000
+```
+
+### 4. Применение миграций
+
+```bash
+cd backend
+npx prisma migrate dev
+npx prisma generate
+```
+
+### 5. Инициализация данных (опционально)
+
+```bash
+cd shared
+npx prisma db seed
+```
+
+### 6. Запуск проекта
+
+#### Development режим
+
+**Терминал 1 - Backend API:**
+```bash
+cd backend
+npm run dev
+```
+
+**Терминал 2 - Worker для очередей:**
+```bash
+cd backend
+npm run worker
+```
+
+**Терминал 3 - Frontend:**
+```bash
+cd frontend
+npm run dev
+```
+
+Приложение будет доступно:
+- 🌐 Frontend: `http://localhost:5173`
+- 🔌 Backend API: `http://localhost:4000`
+
+## 📖 Получение Telegram credentials
+
+### API ID и API Hash
 
 1. Перейдите на https://my.telegram.org/auth
-2. Войдите с помощью вашего номера телефона
-3. Перейдите в раздел "API development tools"
-4. Создайте новое приложение
-5. Скопируйте `api_id` и `api_hash`
+2. Войдите с номером телефона
+3. Перейдите в "API development tools"
+4. Создайте приложение и скопируйте `api_id` и `api_hash`
 
-#### Как получить Session String:
+### Session String
 
-Для получения session string необходимо один раз авторизоваться через Telegram. Можно использовать специальные скрипты для генерации session string:
+Выполните скрипт авторизации (один раз):
 
 ```javascript
+// auth-script.js
 import { TelegramClient } from 'telegram';
 import { StringSession } from 'telegram/sessions/index.js';
-import input from 'input';
+import readline from 'readline';
 
-const apiId = YOUR_API_ID;
-const apiHash = 'YOUR_API_HASH';
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout
+});
+
+const question = (query) => new Promise((resolve) => rl.question(query, resolve));
+
+const apiId = 12345678; // Ваш API ID
+const apiHash = 'your_api_hash'; // Ваш API Hash
 const stringSession = new StringSession('');
 
 (async () => {
@@ -86,579 +217,656 @@ const stringSession = new StringSession('');
   });
 
   await client.start({
-    phoneNumber: async () => await input.text('Phone number: '),
-    password: async () => await input.text('Password: '),
-    phoneCode: async () => await input.text('Code: '),
-    onError: (err) => console.log(err),
+    phoneNumber: async () => await question('Phone number: '),
+    password: async () => await question('2FA password (if enabled): '),
+    phoneCode: async () => await question('Code from Telegram: '),
+    onError: (err) => console.error(err),
   });
 
-  console.log('Session String:', client.session.save());
+  console.log('\n✅ Session String:');
+  console.log(client.session.save());
+  console.log('\nCopy this string to TELEGRAM_SESSION in .env file');
+  
+  process.exit(0);
 })();
 ```
 
-Полученный session string необходимо добавить в файл `.env`.
-
-## Запуск
-
-### Режим разработки
-
+Запустите:
 ```bash
-npm start
+node auth-script.js
 ```
 
-Сервер запустится на порту, указанном в `.env` (по умолчанию 3000).
+Скопируйте полученную строку в `TELEGRAM_SESSION` в `.env`
 
-### Проверка работы
+## 📂 Структура проекта
 
-После запуска сервера:
-- API доступен по адресу: `http://localhost:3000`
-- Swagger UI доступен по адресу: `http://localhost:3000/api-docs`
-- Health check: `http://localhost:3000/health`
-
-## API Документация
-
-### Swagger UI
-
-Полная интерактивная документация API доступна по адресу:
 ```
-http://localhost:3000/api-docs
+predlagator/
+├── frontend/                 # React + Vite приложение
+│   ├── src/
+│   │   ├── components/      # UI компоненты (shadcn/ui)
+│   │   ├── pages/           # Страницы приложения
+│   │   ├── hooks/           # Custom React hooks
+│   │   ├── lib/             # Утилиты и хелперы
+│   │   ├── store/           # Zustand stores
+│   │   └── App.tsx          # Главный компонент
+│   ├── vite.config.ts
+│   └── package.json
+│
+├── backend/                  # Express API сервер
+│   ├── src/
+│   │   ├── routes/          # API роуты
+│   │   ├── controllers/     # Контроллеры бизнес-логики
+│   │   ├── services/        # Сервисы (Telegram, Queue)
+│   │   ├── middleware/      # Auth, validation
+│   │   ├── workers/         # BullMQ job processors
+│   │   ├── server.ts        # HTTP сервер
+│   │   └── worker-server.ts # Worker процесс
+│   ├── prisma/
+│   │   ├── schema.prisma    # Database schema
+│   │   └── migrations/      # DB миграции
+│   └── package.json
+│
+├── shared/                   # Общие схемы и типы
+│   ├── src/schemas/         # Zod схемы валидации
+│   ├── prisma/              # Shared Prisma schema
+│   └── package.json
+│
+├── batched_files/            # Импортированные каналы
+│   └── [category]/          # Папки по категориям
+│       └── *.jsonl          # JSONL файлы с каналами
+│
+├── specs/                    # Спецификации проекта
+│   └── 001-telegram-channel-broadcast/
+│       ├── spec.md          # Основная спецификация
+│       ├── data-model.md    # Модель данных
+│       ├── contracts/       # API контракты
+│       └── checklists/      # Чеклисты
+│
+└── README.md
 ```
 
-### Endpoints
+## 🔌 API Reference
 
-#### 1. Health Check
+### Основные endpoints
 
-Проверка работоспособности сервиса.
-
-**Endpoint:** `GET /health`
-
-**Ответ:**
-```json
-{
-  "status": "ok"
-}
+#### Аутентификация
+```
+POST   /api/auth/login       - Вход в систему
+POST   /api/auth/register    - Регистрация (только admin)
+POST   /api/auth/logout      - Выход
+GET    /api/auth/me          - Текущий пользователь
 ```
 
----
+#### Каналы
+```
+GET    /api/channels                  - Список каналов (пагинация, фильтры)
+GET    /api/channels/:id              - Детали канала
+POST   /api/channels/import           - Импорт из CSV/JSONL
+POST   /api/channels/check-available  - Проверка доступности
+GET    /api/channels/:id/preview      - Превью канала
+```
 
-#### 2. Resolve Username
+#### Батчи
+```
+GET    /api/batches              - Список батчей
+POST   /api/batches              - Создать батч
+GET    /api/batches/:id          - Детали батча
+PUT    /api/batches/:id          - Обновить батч (draft only)
+DELETE /api/batches/:id          - Удалить батч (draft only)
+POST   /api/batches/:id/clone    - Клонировать батч
+POST   /api/batches/:id/channels - Добавить каналы
+DELETE /api/batches/:id/channels - Удалить каналы
+GET    /api/batches/:id/export   - Экспорт CSV/JSON
+```
 
-Получить peer ID пользователя по его username.
+#### Шаблоны
+```
+GET    /api/templates        - Список шаблонов
+POST   /api/templates        - Создать шаблон
+GET    /api/templates/:id    - Детали шаблона
+PUT    /api/templates/:id    - Обновить шаблон
+DELETE /api/templates/:id    - Удалить шаблон
+```
 
-**Endpoint:** `POST /resolve`
+#### Кампании
+```
+GET    /api/campaigns             - Список кампаний (история)
+POST   /api/campaigns             - Создать кампанию
+GET    /api/campaigns/:id         - Детали кампании
+POST   /api/campaigns/:id/start   - Запустить кампанию
+POST   /api/campaigns/:id/pause   - Поставить на паузу
+POST   /api/campaigns/:id/resume  - Возобновить
+GET    /api/campaigns/:id/logs    - Real-time логи
+GET    /api/campaigns/:id/metrics - Метрики кампании
+GET    /api/campaigns/:id/export  - Экспорт отчета
+```
 
-**Request Body:**
-```json
-{
-  "username": "durov"
-}
+#### Пользователи (Admin only)
+```
+GET    /api/users        - Список пользователей
+POST   /api/users        - Создать пользователя
+PUT    /api/users/:id    - Обновить роль
+DELETE /api/users/:id    - Удалить пользователя
+```
+
+#### Audit Log (Admin/Auditor)
+```
+GET    /api/audit        - Журнал действий (фильтры)
+```
+
+### Примеры запросов
+
+#### Создание батча
+```bash
+curl -X POST http://localhost:4000/api/batches \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Tech Channels Q4",
+    "channelIds": [1, 2, 3, 4, 5]
+  }'
+```
+
+#### Запуск кампании
+```bash
+curl -X POST http://localhost:4000/api/campaigns/:id/start \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mode": "live",
+    "throttle": {
+      "msgPerSec": 2,
+      "delayMs": 500
+    },
+    "retryPolicy": {
+      "maxAttempts": 3,
+      "backoff": "exponential"
+    }
+  }'
+```
+
+#### Получение метрик кампании
+```bash
+curl -X GET http://localhost:4000/api/campaigns/:id/metrics \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
 **Response:**
 ```json
 {
-  "peer": "123456789"
-}
-```
-
-**Примеры ошибок:**
-- `400` — Username не указан
-- `404` — Пользователь не найден
-- `500` — Ошибка сервера
-
----
-
-#### 3. Send Message (Универсальный)
-
-Отправка сообщения (текст и/или медиа). **Рекомендуемый endpoint для использования.**
-
-**Endpoint:** `POST /send`
-
-**Request Body (только текст):**
-```json
-{
-  "text": "Привет! Это тестовое сообщение",
-  "username": "durov"
-}
-```
-
-**Request Body (текст + медиа URL):**
-```json
-{
-  "text": "Смотри какое фото!",
-  "username": "durov",
-  "media_url": "https://example.com/image.jpg"
-}
-```
-
-**Request Body (текст + медиа base64):**
-```json
-{
-  "text": "Картинка из base64",
-  "username": "durov",
-  "media_base64": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg...",
-  "filename": "image.png"
-}
-```
-
-**Request Body (отправка себе):**
-```json
-{
-  "text": "Сообщение себе"
-}
-```
-
-**Параметры:**
-- `text` (обязательный) — текст сообщения
-- `username` (опционально) — username получателя (без @)
-- `peer` (опционально) — peer ID получателя
-- `media_url` (опционально) — URL медиафайла
-- `media_base64` (опционально) — base64 строка медиафайла
-- `filename` (опционально) — имя файла для определения расширения
-
-**Примечания:**
-- Если не указаны `username` и `peer`, сообщение отправится в "Избранное" (себе)
-- `media_base64` может быть как data URL (`data:image/png;base64,...`), так и чистой base64 строкой
-- При указании и `media_url`, и `media_base64`, приоритет у `media_url`
-
-**Response:**
-```json
-{
-  "success": true
-}
-```
-
----
-
-#### 4. Send Text Message (Устаревший)
-
-Отправка только текстового сообщения.
-
-**Endpoint:** `POST /sendText`
-
-**Статус:** Deprecated (рекомендуется использовать `/send`)
-
-**Request Body:**
-```json
-{
-  "text": "Привет!",
-  "username": "durov"
-}
-```
-
-**Параметры:**
-- `text` (обязательный) — текст сообщения
-- `username` (опционально) — username получателя
-- `peer` (опционально) — peer ID получателя
-
----
-
-#### 5. Send Media (Устаревший)
-
-Отправка медиафайла с подписью.
-
-**Endpoint:** `POST /sendMedia`
-
-**Статус:** Deprecated (рекомендуется использовать `/send`)
-
-**Request Body:**
-```json
-{
-  "username": "durov",
-  "media_url": "https://example.com/video.mp4",
-  "caption": "Смотри это видео!"
-}
-```
-
-**Параметры:**
-- `username` или `peer` (обязательный) — получатель
-- `media_url` или `media_base64` (обязательный) — медиафайл
-- `caption` (опционально) — подпись к медиа
-- `filename` (опционально) — имя файла
-
-## Примеры использования
-
-### cURL
-
-**Отправка текстового сообщения:**
-```bash
-curl -X POST http://localhost:3000/send \
-  -H "Content-Type: application/json" \
-  -d '{
-    "text": "Привет из cURL!",
-    "username": "durov"
-  }'
-```
-
-**Отправка с медиа:**
-```bash
-curl -X POST http://localhost:3000/send \
-  -H "Content-Type: application/json" \
-  -d '{
-    "text": "Фото дня",
-    "username": "durov",
-    "media_url": "https://picsum.photos/800/600"
-  }'
-```
-
-**Resolve username:**
-```bash
-curl -X POST http://localhost:3000/resolve \
-  -H "Content-Type: application/json" \
-  -d '{"username": "durov"}'
-```
-
-### JavaScript (fetch)
-
-```javascript
-// Отправка сообщения
-async function sendMessage() {
-  const response = await fetch('http://localhost:3000/send', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      text: 'Привет из JavaScript!',
-      username: 'durov'
-    })
-  });
-
-  const result = await response.json();
-  console.log(result);
-}
-
-// Отправка с медиа
-async function sendWithMedia() {
-  const response = await fetch('http://localhost:3000/send', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      text: 'Смотри фото!',
-      username: 'durov',
-      media_url: 'https://example.com/image.jpg'
-    })
-  });
-
-  const result = await response.json();
-  console.log(result);
-}
-```
-
-### Python
-
-```python
-import requests
-
-# Отправка сообщения
-def send_message():
-    url = 'http://localhost:3000/send'
-    data = {
-        'text': 'Привет из Python!',
-        'username': 'durov'
-    }
-    response = requests.post(url, json=data)
-    print(response.json())
-
-# Отправка с base64 изображением
-def send_with_base64():
-    import base64
-
-    # Читаем файл и конвертируем в base64
-    with open('image.png', 'rb') as f:
-        image_data = base64.b64encode(f.read()).decode('utf-8')
-
-    url = 'http://localhost:3000/send'
-    data = {
-        'text': 'Картинка из Python',
-        'username': 'durov',
-        'media_base64': f'data:image/png;base64,{image_data}',
-        'filename': 'image.png'
-    }
-    response = requests.post(url, json=data)
-    print(response.json())
-
-send_message()
-```
-
-### PHP
-
-```php
-<?php
-
-// Отправка сообщения
-function sendMessage() {
-    $url = 'http://localhost:3000/send';
-    $data = [
-        'text' => 'Привет из PHP!',
-        'username' => 'durov'
-    ];
-
-    $options = [
-        'http' => [
-            'header' => "Content-Type: application/json\r\n",
-            'method' => 'POST',
-            'content' => json_encode($data)
-        ]
-    ];
-
-    $context = stream_context_create($options);
-    $result = file_get_contents($url, false, $context);
-
-    echo $result;
-}
-
-sendMessage();
-?>
-```
-
-## Структура проекта
-
-```
-бот_рассылка/
-├── src/
-│   └── index.js          # Основной файл приложения
-├── node_modules/         # Зависимости
-├── .env                  # Конфигурация (не коммитится в git)
-├── package.json          # Информация о проекте и зависимости
-└── README.md            # Документация
-```
-
-## Обработка ошибок
-
-Все endpoints возвращают JSON с описанием ошибки в случае проблем:
-
-```json
-{
-  "error": "Описание ошибки",
-  "details": "Детальная информация",
-  "type": "Тип ошибки"
-}
-```
-
-### Типичные ошибки
-
-| Код | Описание | Решение |
-|-----|----------|---------|
-| 400 | Неверный запрос | Проверьте обязательные параметры |
-| 404 | Пользователь не найден | Убедитесь, что username существует |
-| 500 | Ошибка сервера | Проверьте логи сервера и конфигурацию |
-
-### Логирование
-
-Сервер выводит подробные логи в консоль:
-- Информация о подключении к Telegram
-- Входящие запросы
-- Отправленные сообщения
-- Ошибки с деталями
-
-## Безопасность
-
-⚠️ **Важные замечания по безопасности:**
-
-1. **Не коммитьте `.env` файл в git** — он содержит чувствительные данные
-2. **Не публикуйте Session String** — с его помощью можно получить доступ к вашему аккаунту
-3. **Используйте HTTPS** в продакшене
-4. **Ограничьте доступ к API** — используйте авторизацию/API ключи
-5. **Регулярно обновляйте зависимости** — `npm update`
-6. **Используйте rate limiting** — ограничьте количество запросов
-
-### Рекомендации для продакшена
-
-```javascript
-// Добавьте middleware для авторизации
-app.use((req, res, next) => {
-  const apiKey = req.headers['x-api-key'];
-  if (apiKey !== process.env.API_KEY) {
-    return res.status(401).json({ error: 'Unauthorized' });
+  "campaignId": "123",
+  "status": "sending",
+  "totalJobs": 1000,
+  "completed": 750,
+  "failed": 50,
+  "queued": 200,
+  "successRate": 93.75,
+  "speed": 2.1,
+  "errors": {
+    "FLOOD_WAIT": 30,
+    "PEER_BLOCKED": 15,
+    "NETWORK_ERROR": 5
   }
-  next();
-});
-
-// Добавьте rate limiting
-import rateLimit from 'express-rate-limit';
-
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 минут
-  max: 100 // максимум 100 запросов
-});
-
-app.use(limiter);
+}
 ```
 
-## Deployment
+## 💡 Типовые сценарии использования
 
-### PM2 (Process Manager)
+### 1️⃣ Первая рассылка
 
+```typescript
+// 1. Импортируем каналы
+POST /api/channels/import
+{
+  "file": "channels.jsonl",
+  "category": "tech"
+}
+
+// 2. Создаем батч
+POST /api/batches
+{
+  "name": "Tech Channels Q1",
+  "channelIds": [1, 2, 3, 4, 5]
+}
+
+// 3. Создаем шаблон сообщения
+POST /api/templates
+{
+  "name": "Product Promo",
+  "content": "Привет {{username}}! Новое предложение для {{category}} каналов",
+  "mediaUrl": "https://example.com/promo.jpg"
+}
+
+// 4. Создаем кампанию
+POST /api/campaigns
+{
+  "batchId": 1,
+  "templateId": 1,
+  "mode": "test"
+}
+
+// 5. Тестируем
+POST /api/campaigns/1/start
+{
+  "mode": "test"
+}
+
+// 6. Если ОК, запускаем на всю базу
+POST /api/campaigns/1/start
+{
+  "mode": "live",
+  "throttle": { "msgPerSec": 2 }
+}
+```
+
+### 2️⃣ Мониторинг кампании
+
+```javascript
+// Frontend: Подписка на обновления
+const pollMetrics = async (campaignId) => {
+  const interval = setInterval(async () => {
+    const response = await fetch(`/api/campaigns/${campaignId}/metrics`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const metrics = await response.json();
+    
+    updateDashboard(metrics);
+    
+    if (metrics.status === 'completed') {
+      clearInterval(interval);
+    }
+  }, 2000); // Poll every 2 seconds
+};
+```
+
+### 3️⃣ Автоматическая пауза при ошибках
+
+```typescript
+// Worker автоматически паузит кампанию при FLOOD_WAIT
+// Настраивается в config
+{
+  "autoПауза": {
+    "floodThreshold": 3,  // 3 ошибки FLOOD подряд
+    "errorRate": 0.1      // или 10% failed jobs
+  }
+}
+```
+
+## 🔒 Безопасность
+
+### 🔐 Шифрование Session Strings
+
+Session strings шифруются AES-256 перед сохранением в БД:
+
+```typescript
+// backend/src/services/encryption.ts
+import crypto from 'crypto';
+
+const ALGORITHM = 'aes-256-gcm';
+const KEY = process.env.ENCRYPTION_KEY; // 32 байта
+
+export function encrypt(text: string): string {
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv(ALGORITHM, KEY, iv);
+  
+  let encrypted = cipher.update(text, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  
+  const authTag = cipher.getAuthTag();
+  
+  return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
+}
+```
+
+### 👥 Role-Based Access Control
+
+Три роли с разными правами:
+
+| Роль | Права |
+|------|-------|
+| **Admin** | Полный доступ: управление пользователями, view session strings, delete any campaign |
+| **Operator** | Создание батчей, кампаний, просмотр собственных кампаний |
+| **Auditor** | Read-only: история кампаний, логи, отчеты |
+
+### 📝 Audit Trail
+
+Все действия логируются:
+
+```sql
+-- Пример записи в audit_log
+INSERT INTO audit_log (
+  user_id, action, entity_type, entity_id, 
+  previous_value, new_value, ip_address
+) VALUES (
+  1, 'campaign_launched', 'Campaign', 42,
+  '{"status": "draft"}', '{"status": "sending"}', 
+  '192.168.1.1'
+);
+```
+
+### 🚫 Opt-Out Management
+
+```typescript
+// Каналы с opt_out=true не могут быть добавлены в батчи
+POST /api/batches/1/channels
+{
+  "channelIds": [10, 20, 30] // 20 has opt_out=true
+}
+
+// Response 400:
+{
+  "error": "Cannot add opt-out channels",
+  "blockedChannels": [20]
+}
+```
+
+## ⚡ Performance
+
+### Оптимизации
+
+- 🚀 **Connection pooling**: 3-5 GramJS sessions параллельно
+- 📦 **Job batching**: BullMQ группирует задачи для эффективности
+- 💾 **Caching**: Redis кэш для peer_id резолвинга
+- ⏱️ **Throttling**: Встроенная защита от FLOOD_WAIT
+- 📊 **Indexing**: Оптимизированные индексы в Prisma schema
+
+### Масштабируемость
+
+- До **10,000 каналов** в одном батче
+- До **100 concurrent campaigns** (limited by Redis/workers)
+- Throughput: **2-30 msg/sec** (configurable, respecting Telegram limits)
+
+## 🚀 Production Deployment
+
+### Vercel (Frontend)
+
+1. **Подключите GitHub репозиторий к Vercel**
+2. **Настройте Build settings:**
+   - Framework: Vite
+   - Root Directory: `frontend`
+   - Build Command: `npm run build`
+   - Output Directory: `dist`
+
+3. **Environment Variables:**
+   ```
+   VITE_API_URL=https://your-backend.railway.app
+   ```
+
+4. **Deploy:**
+   ```bash
+   git push origin main
+   # Vercel автоматически задеплоит
+   ```
+
+### Railway/Render (Backend + Worker)
+
+**Backend API:**
 ```bash
-# Установка PM2
-npm install -g pm2
-
-# Запуск приложения
-pm2 start src/index.js --name telegram-bot
-
-# Просмотр логов
-pm2 logs telegram-bot
-
-# Перезапуск
-pm2 restart telegram-bot
-
-# Автозапуск при перезагрузке системы
-pm2 startup
-pm2 save
-```
-
-### Docker
-
-Создайте `Dockerfile`:
-
-```dockerfile
+# Dockerfile для backend
 FROM node:18-alpine
-
 WORKDIR /app
-
-COPY package*.json ./
-RUN npm install
-
-COPY . .
-
-EXPOSE 3000
-
+COPY backend/package*.json ./
+RUN npm ci --only=production
+COPY backend/ .
+RUN npx prisma generate
+EXPOSE 4000
 CMD ["npm", "start"]
 ```
 
-Создайте `docker-compose.yml`:
+**Worker process:**
+```bash
+# Отдельный сервис для worker
+CMD ["npm", "run", "worker"]
+```
+
+**Environment Variables на Railway:**
+```env
+DATABASE_URL=postgresql://...
+REDIS_URL=redis://...
+TELEGRAM_API_ID=...
+TELEGRAM_API_HASH=...
+TELEGRAM_SESSION=...
+JWT_SECRET=...
+ENCRYPTION_KEY=...
+NODE_ENV=production
+```
+
+### Docker Compose (Self-hosted)
 
 ```yaml
 version: '3.8'
 
 services:
-  telegram-bot:
-    build: .
+  postgres:
+    image: postgres:14-alpine
+    environment:
+      POSTGRES_DB: predlagator
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     ports:
-      - "3000:3000"
-    env_file:
-      - .env
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://admin:${DB_PASSWORD}@postgres:5432/predlagator
+      REDIS_URL: redis://redis:6379
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
+      TELEGRAM_SESSION: ${TELEGRAM_SESSION}
+      JWT_SECRET: ${JWT_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+    ports:
+      - "4000:4000"
+    depends_on:
+      - postgres
+      - redis
     restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: npm run worker
+    environment:
+      DATABASE_URL: postgresql://admin:${DB_PASSWORD}@postgres:5432/predlagator
+      REDIS_URL: redis://redis:6379
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
+      TELEGRAM_SESSION: ${TELEGRAM_SESSION}
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    environment:
+      VITE_API_URL: http://localhost:4000
+    ports:
+      - "5173:80"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
 ```
 
 Запуск:
-
 ```bash
 docker-compose up -d
 ```
 
-### Systemd (Linux)
+## 🐛 Troubleshooting
 
-Создайте файл `/etc/systemd/system/telegram-bot.service`:
+### ❌ FLOOD_WAIT ошибки
 
-```ini
-[Unit]
-Description=Telegram Sender Bot
-After=network.target
+**Проблема:** Слишком быстрая отправка сообщений
 
-[Service]
-Type=simple
-User=your-user
-WorkingDirectory=/path/to/бот_рассылка
-ExecStart=/usr/bin/node src/index.js
-Restart=always
-Environment=NODE_ENV=production
+**Решение:**
+- Уменьшите throttle до 1-2 msg/sec
+- Увеличьте delay между сообщениями
+- Используйте несколько session strings (разные аккаунты)
+- Подождите время, указанное в ошибке
 
-[Install]
-WantedBy=multi-user.target
-```
+### ❌ Кампания не запускается
 
-Запуск:
+**Проблема:** Status stuck в "draft"
 
+**Решение:**
+1. Проверьте, запущен ли worker процесс: `npm run worker`
+2. Убедитесь, что Redis доступен
+3. Проверьте логи worker: `docker logs predlagator-worker`
+
+### ❌ Session expired
+
+**Проблема:** "AUTH_KEY_UNREGISTERED" или "SESSION_REVOKED"
+
+**Решение:**
+1. Пересоздайте session string через auth-script
+2. Обновите `TELEGRAM_SESSION` в .env
+3. Перезапустите backend и worker
+
+### ❌ Database connection failed
+
+**Проблема:** "Can't reach database server"
+
+**Решение:**
 ```bash
-sudo systemctl enable telegram-bot
-sudo systemctl start telegram-bot
-sudo systemctl status telegram-bot
+# Проверьте подключение к БД
+psql $DATABASE_URL
+
+# Проверьте миграции
+cd backend
+npx prisma migrate status
+npx prisma migrate deploy
 ```
 
-## Troubleshooting
+### ❌ Frontend не видит Backend API
 
-### Проблема: "Клиент не авторизован"
-
-**Решение:** Пересоздайте session string с помощью скрипта авторизации.
-
-### Проблема: "Cannot connect to Telegram"
+**Проблема:** CORS errors, Network failed
 
 **Решение:**
-1. Проверьте интернет-соединение
-2. Убедитесь, что Telegram не заблокирован в вашей стране
-3. Попробуйте использовать прокси/VPN
+1. Убедитесь, что `VITE_API_URL` указывает на правильный адрес
+2. Проверьте CORS настройки в backend:
+```typescript
+// backend/src/server.ts
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  credentials: true
+}));
+```
 
-### Проблема: "Пользователь не найден"
+## ⚠️ Ограничения Telegram API
 
-**Решение:**
-1. Убедитесь, что username указан без символа @
-2. Проверьте, что пользователь существует
-3. Попробуйте сначала написать пользователю из Telegram клиента
+- 📦 **Размер медиа:** max 50 MB
+- ⚡ **Rate limits:** ~30 msg/sec глобально, 20 msg/min per chat
+- 🚫 **Спам:** 300+ msg/day может вызвать бан
+- 📏 **Длина сообщения:** max 4096 символов
+- 👤 **Peer limitations:** Нельзя писать пользователям, которые не начали диалог первыми
 
-### Проблема: "Error sending media"
+## 📝 Changelog
 
-**Решение:**
-1. Проверьте формат base64 строки
-2. Убедитесь, что URL доступен
-3. Проверьте размер файла (Telegram имеет ограничения)
-4. Убедитесь, что указан правильный MIME type
+### 🎯 Roadmap (Planned)
 
-## Ограничения Telegram API
+#### v1.1.0 - Q2 2025
+- [ ] WebSocket для real-time updates (вместо polling)
+- [ ] Advanced analytics dashboard с графиками
+- [ ] Multi-language support (EN, RU, UA)
+- [ ] Telegram Bot interface для управления
 
-- Максимальный размер файла: 50 MB
-- Rate limit: ~30 сообщений в секунду
-- Максимум 20 сообщений в минуту в один чат
-- Нельзя отправлять сообщения пользователям, которые не начали диалог с вами первыми (если не используется бот)
+#### v1.2.0 - Q3 2025
+- [ ] Channel analytics integration (subscribers, engagement)
+- [ ] Smart scheduling (optimal send times)
+- [ ] Template variables with conditions
+- [ ] Campaign cloning and templates
 
-## Лицензия
+#### v2.0.0 - Q4 2025
+- [ ] Multi-tenant support (agency mode)
+- [ ] API webhooks для интеграций
+- [ ] Advanced A/B testing with statistical analysis
+- [ ] Mobile app (React Native)
 
-MIT License
+### 🚀 Current Version: MVP 1.0.0
 
-## Поддержка
+**Implemented:**
+- ✅ Channel catalog management с фильтрацией
+- ✅ Batch creation и management
+- ✅ Message templates с placeholders
+- ✅ Campaign execution с throttling
+- ✅ Real-time monitoring и metrics
+- ✅ Role-based access control
+- ✅ Audit trail logging
+- ✅ Session string encryption
+- ✅ Auto-pause на FLOOD_WAIT
+- ✅ Test mode и Dry run
 
-Если у вас возникли вопросы или проблемы, создайте issue в репозитории проекта.
+## 🤝 Contributing
 
-## Changelog
-
-### Version 1.0.0 (Текущая)
-- ✅ Базовая функциональность отправки сообщений
-- ✅ Поддержка медиафайлов
-- ✅ Swagger документация
-- ✅ Health check endpoint
-- ✅ Username resolver
-
-### Планируемые функции
-- [ ] Отправка нескольких медиафайлов (альбомы)
-- [ ] Планировщик сообщений
-- [ ] Webhook уведомления
-- [ ] Шаблоны сообщений
-- [ ] Bulk рассылка
-- [ ] Статистика отправок
-- [ ] Web UI для управления
-
-## Contributing
-
-Мы приветствуем ваш вклад в развитие проекта! Пожалуйста:
+Contributions приветствуются! Пожалуйста:
 
 1. Fork репозитория
-2. Создайте feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit изменения (`git commit -m 'Add some AmazingFeature'`)
-4. Push в branch (`git push origin feature/AmazingFeature`)
-5. Откройте Pull Request
+2. Создайте feature branch:
+   ```bash
+   git checkout -b feature/002-advanced-analytics
+   ```
+3. Follow спецификации в `specs/`
+4. Commit изменения с conventional commits:
+   ```bash
+   git commit -m "feat(analytics): add engagement metrics dashboard"
+   ```
+5. Push и создайте Pull Request
 
-## Авторы
+### Development Guidelines
 
-Разработано для автоматизации Telegram рассылок.
+- 📝 TypeScript strict mode
+- 🧪 Unit tests для критической логики
+- 📚 JSDoc комментарии для публичных API
+- 🎨 Prettier + ESLint
+- 🔄 Conventional Commits
+
+## 📄 Лицензия
+
+MIT License - смотрите [LICENSE](LICENSE)
+
+## 🙏 Благодарности
+
+- **GramJS** - Telegram MTProto клиент
+- **Prisma** - Database ORM
+- **shadcn/ui** - UI компоненты
+- **BullMQ** - Job queue
+- **tg-scrap** - Channel scraping tool
+
+## 📞 Контакты и поддержка
+
+- 🐛 **Bug Reports:** [GitHub Issues](https://github.com/filstack/predlagator/issues)
+- 💡 **Feature Requests:** [GitHub Discussions](https://github.com/filstack/predlagator/discussions)
+- 📧 **Email:** support@predlagator.app
+- 💬 **Telegram:** [@predlagator_support](https://t.me/predlagator_support)
 
 ---
 
-**Полезные ссылки:**
+**🔗 Полезные ссылки:**
 - [Telegram API Documentation](https://core.telegram.org/api)
-- [GramJS Documentation](https://gram.js.org/)
-- [Express Documentation](https://expressjs.com/)
-- [Swagger Documentation](https://swagger.io/docs/)
-# predlagator
+- [GramJS Docs](https://gram.js.org/)
+- [Prisma Docs](https://www.prisma.io/docs)
+- [shadcn/ui](https://ui.shadcn.com/)
+- [Vercel Deployment](https://vercel.com/docs)
+
+---
+
+⭐ **Если проект полезен, поставьте звезду на GitHub!**
