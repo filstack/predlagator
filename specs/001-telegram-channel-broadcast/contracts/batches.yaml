@@ -1,0 +1,373 @@
+openapi: 3.0.3
+info:
+  title: Batches API
+  version: 1.0.0
+  description: |
+    Batch management endpoints for grouping channels.
+
+    **Permissions**:
+    - List/Read: ADMIN, OPERATOR, AUDITOR
+    - Create/Update/Delete: ADMIN, OPERATOR
+
+servers:
+  - url: https://api.example.com/api
+
+tags:
+  - name: Batches
+    description: Batch operations
+
+paths:
+  /batches:
+    get:
+      tags:
+        - Batches
+      summary: List batches
+      description: |
+        Fetch all batches with pagination.
+
+        **Permissions**: ADMIN, OPERATOR, AUDITOR
+      operationId: listBatches
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: cursor
+          in: query
+          schema:
+            type: string
+            format: cuid
+      responses:
+        '200':
+          description: List of batches
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  batches:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Batch'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+    post:
+      tags:
+        - Batches
+      summary: Create batch
+      description: |
+        Create new batch with selected channels.
+
+        **Permissions**: ADMIN, OPERATOR
+        **Audit**: Logs BATCH_CREATED
+        **Validation**:
+        - Name must be unique
+        - At least 1 channel required
+        - All channel IDs must exist
+      operationId: createBatch
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBatchRequest'
+      responses:
+        '201':
+          description: Batch created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchDetail'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                duplicateName:
+                  value:
+                    error:
+                      code: DUPLICATE_NAME
+                      message: Batch with this name already exists
+                emptyChannels:
+                  value:
+                    error:
+                      code: INVALID_INPUT
+                      message: At least one channel is required
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /batches/{id}:
+    get:
+      tags:
+        - Batches
+      summary: Get batch details
+      description: |
+        Fetch batch with all channels and campaign history.
+
+        **Permissions**: ADMIN, OPERATOR, AUDITOR
+      operationId: getBatch
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: cuid
+      responses:
+        '200':
+          description: Batch details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchDetail'
+        '404':
+          description: Batch not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    patch:
+      tags:
+        - Batches
+      summary: Update batch
+      description: |
+        Update batch name, description, or channels.
+
+        **Permissions**: ADMIN, OPERATOR
+        **Audit**: Logs BATCH_UPDATED
+        **Note**: Updating channels does NOT affect running campaigns (immutability principle)
+      operationId: updateBatch
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: cuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  minLength: 3
+                  maxLength: 100
+                description:
+                  type: string
+                  maxLength: 500
+                channelIds:
+                  type: array
+                  items:
+                    type: string
+                    format: cuid
+                  minItems: 1
+      responses:
+        '200':
+          description: Batch updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchDetail'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Batch not found
+
+    delete:
+      tags:
+        - Batches
+      summary: Delete batch
+      description: |
+        Delete batch (soft delete if associated campaigns exist).
+
+        **Permissions**: ADMIN, OPERATOR
+        **Audit**: Logs BATCH_DELETED
+        **Constraint**: Cannot delete batch with RUNNING campaigns
+      operationId: deleteBatch
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: cuid
+      responses:
+        '204':
+          description: Batch deleted
+        '400':
+          description: Cannot delete batch with running campaigns
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: BATCH_IN_USE
+                  message: Cannot delete batch with running campaigns
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  schemas:
+    Batch:
+      type: object
+      required:
+        - id
+        - name
+        - channelCount
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: cuid
+          example: cl9x2k3j40000356t8g9h1b2c
+        name:
+          type: string
+          example: Tech Channels - Q1 2025
+        description:
+          type: string
+          nullable: true
+          example: Technology and crypto news channels
+        channelCount:
+          type: integer
+          example: 45
+        createdAt:
+          type: string
+          format: date-time
+          example: '2025-10-01T12:00:00Z'
+        updatedAt:
+          type: string
+          format: date-time
+          example: '2025-10-13T08:30:00Z'
+
+    BatchDetail:
+      allOf:
+        - $ref: '#/components/schemas/Batch'
+        - type: object
+          properties:
+            channels:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: cuid
+                  username:
+                    type: string
+                  category:
+                    type: string
+                  isActive:
+                    type: boolean
+            createdBy:
+              type: object
+              properties:
+                id:
+                  type: string
+                  format: cuid
+                username:
+                  type: string
+                role:
+                  type: string
+                  enum: [ADMIN, OPERATOR, AUDITOR]
+            campaigns:
+              type: array
+              description: Associated campaigns (summary)
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: cuid
+                  name:
+                    type: string
+                  status:
+                    type: string
+                    enum: [QUEUED, RUNNING, PAUSED, COMPLETED, FAILED, CANCELLED]
+                  createdAt:
+                    type: string
+                    format: date-time
+
+    CreateBatchRequest:
+      type: object
+      required:
+        - name
+        - channelIds
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 100
+          example: Tech Channels - Q1 2025
+        description:
+          type: string
+          maxLength: 500
+          example: Technology and crypto news channels
+        channelIds:
+          type: array
+          items:
+            type: string
+            format: cuid
+          minItems: 1
+          example:
+            - cl9x2k3j40000356t8g9h1b2c
+            - cl9x2k3j40000356t8g9h1b2d
+
+    Pagination:
+      type: object
+      properties:
+        nextCursor:
+          type: string
+          nullable: true
+        hasMore:
+          type: boolean
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+
+  responses:
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

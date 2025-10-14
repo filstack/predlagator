@@ -1,0 +1,557 @@
+openapi: 3.0.3
+info:
+  title: Campaigns API
+  version: 1.0.0
+  description: |
+    Campaign management and execution endpoints.
+
+    **Permissions**:
+    - List/Read: ADMIN, OPERATOR, AUDITOR
+    - Create/Update: ADMIN, OPERATOR
+
+servers:
+  - url: https://api.example.com/api
+
+tags:
+  - name: Campaigns
+    description: Campaign operations
+
+paths:
+  /campaigns:
+    get:
+      tags:
+        - Campaigns
+      summary: List campaigns
+      description: |
+        Fetch campaigns with filters and pagination.
+
+        **Permissions**: ADMIN, OPERATOR, AUDITOR
+      operationId: listCampaigns
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          description: Filter by status
+          schema:
+            type: string
+            enum: [QUEUED, RUNNING, PAUSED, COMPLETED, FAILED, CANCELLED]
+        - name: batchId
+          in: query
+          description: Filter by batch
+          schema:
+            type: string
+            format: cuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 100
+        - name: cursor
+          in: query
+          schema:
+            type: string
+            format: cuid
+      responses:
+        '200':
+          description: List of campaigns
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaigns:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Campaign'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+    post:
+      tags:
+        - Campaigns
+      summary: Create campaign
+      description: |
+        Create new campaign with batch, template, and delivery settings.
+
+        **Permissions**: ADMIN, OPERATOR
+        **Audit**: Logs CAMPAIGN_CREATED
+        **Constitutional Principle III**: Must use TEST mode first (enforced in UI, not API)
+        **Flow**:
+        1. Create campaign with mode=TEST
+        2. Start campaign → sends to operator's account
+        3. Verify message looks correct
+        4. Update campaign to mode=LIVE (via PATCH /campaigns/:id)
+        5. Resume campaign → sends to all channels
+      operationId: createCampaign
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCampaignRequest'
+      responses:
+        '201':
+          description: Campaign created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignDetail'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                batchNotFound:
+                  value:
+                    error:
+                      code: BATCH_NOT_FOUND
+                      message: Batch with ID cl9x... does not exist
+                templateNotFound:
+                  value:
+                    error:
+                      code: TEMPLATE_NOT_FOUND
+                      message: Template with ID cl9x... does not exist
+
+  /campaigns/{id}:
+    get:
+      tags:
+        - Campaigns
+      summary: Get campaign details
+      description: |
+        Fetch campaign with real-time progress.
+
+        **Permissions**: ADMIN, OPERATOR, AUDITOR
+        **Performance**: Aggregates job counts from BullMQ queue
+      operationId: getCampaign
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: cuid
+      responses:
+        '200':
+          description: Campaign details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignDetail'
+        '404':
+          description: Campaign not found
+
+    patch:
+      tags:
+        - Campaigns
+      summary: Update campaign settings
+      description: |
+        Update campaign mode, delivery rate, or retry limit.
+
+        **Permissions**: ADMIN, OPERATOR
+        **Constraints**:
+        - Cannot change batchId or templateId after creation
+        - Cannot change mode from TEST to LIVE without operator confirmation (UI-enforced)
+      operationId: updateCampaign
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: cuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mode:
+                  type: string
+                  enum: [TEST, LIVE]
+                deliveryRate:
+                  type: integer
+                  minimum: 1
+                  maximum: 30
+                  description: Messages per minute
+                retryLimit:
+                  type: integer
+                  minimum: 0
+                  maximum: 5
+      responses:
+        '200':
+          description: Campaign updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignDetail'
+
+  /campaigns/{id}/start:
+    post:
+      tags:
+        - Campaigns
+      summary: Start campaign
+      description: |
+        Start campaign execution (queues jobs to BullMQ).
+
+        **Permissions**: ADMIN, OPERATOR
+        **Audit**: Logs CAMPAIGN_STARTED
+        **Constitutional Principle II**: Jobs persisted to Redis + Postgres
+        **Flow**:
+        1. Create jobs for all channels in batch
+        2. Add jobs to BullMQ queue with rate limiter
+        3. Update campaign status to RUNNING
+        4. Workers process jobs asynchronously
+      operationId: startCampaign
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: cuid
+      responses:
+        '200':
+          description: Campaign started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Campaign started successfully
+                  campaign:
+                    $ref: '#/components/schemas/CampaignDetail'
+        '400':
+          description: Campaign cannot be started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                alreadyRunning:
+                  value:
+                    error:
+                      code: CAMPAIGN_ALREADY_RUNNING
+                      message: Campaign is already running
+                alreadyCompleted:
+                  value:
+                    error:
+                      code: CAMPAIGN_ALREADY_COMPLETED
+                      message: Campaign has already completed
+
+  /campaigns/{id}/pause:
+    post:
+      tags:
+        - Campaigns
+      summary: Pause campaign
+      description: |
+        Pause campaign execution (stops processing new jobs).
+
+        **Permissions**: ADMIN, OPERATOR
+        **Audit**: Logs CAMPAIGN_PAUSED
+        **Constitutional Principle IV**: Batch independence - pausing one campaign does not affect others
+      operationId: pauseCampaign
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: cuid
+      responses:
+        '200':
+          description: Campaign paused
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Campaign paused successfully
+                  campaign:
+                    $ref: '#/components/schemas/CampaignDetail'
+        '400':
+          description: Campaign not running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /campaigns/{id}/resume:
+    post:
+      tags:
+        - Campaigns
+      summary: Resume campaign
+      description: |
+        Resume paused campaign.
+
+        **Permissions**: ADMIN, OPERATOR
+        **Audit**: Logs CAMPAIGN_RESUMED
+      operationId: resumeCampaign
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: cuid
+      responses:
+        '200':
+          description: Campaign resumed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Campaign resumed successfully
+                  campaign:
+                    $ref: '#/components/schemas/CampaignDetail'
+        '400':
+          description: Campaign not paused
+
+  /campaigns/{id}/cancel:
+    post:
+      tags:
+        - Campaigns
+      summary: Cancel campaign
+      description: |
+        Cancel campaign (removes pending jobs from queue).
+
+        **Permissions**: ADMIN, OPERATOR
+        **Audit**: Logs CAMPAIGN_CANCELLED
+        **Note**: Already sent messages cannot be unsent
+      operationId: cancelCampaign
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: cuid
+      responses:
+        '200':
+          description: Campaign cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Campaign cancelled. 123 pending jobs removed from queue.
+                  campaign:
+                    $ref: '#/components/schemas/CampaignDetail'
+
+components:
+  schemas:
+    Campaign:
+      type: object
+      required:
+        - id
+        - name
+        - status
+        - mode
+        - progress
+        - totalJobs
+      properties:
+        id:
+          type: string
+          format: cuid
+        name:
+          type: string
+          example: Black Friday Promo - Tech Channels
+        status:
+          type: string
+          enum: [QUEUED, RUNNING, PAUSED, COMPLETED, FAILED, CANCELLED]
+          example: RUNNING
+        mode:
+          type: string
+          enum: [TEST, LIVE]
+          example: LIVE
+        progress:
+          type: integer
+          description: Jobs completed (sent + failed)
+          example: 145
+        totalJobs:
+          type: integer
+          description: Total jobs in campaign
+          example: 500
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    CampaignDetail:
+      allOf:
+        - $ref: '#/components/schemas/Campaign'
+        - type: object
+          properties:
+            description:
+              type: string
+              nullable: true
+            batch:
+              type: object
+              properties:
+                id:
+                  type: string
+                name:
+                  type: string
+                channelCount:
+                  type: integer
+            template:
+              type: object
+              properties:
+                id:
+                  type: string
+                name:
+                  type: string
+                content:
+                  type: string
+                  description: Template text with {{placeholders}}
+            params:
+              type: object
+              additionalProperties: true
+              description: Placeholder values
+              example:
+                channel_name: TechNews
+                offer_text: 20% discount on all courses
+            deliveryRate:
+              type: integer
+              description: Messages per minute
+              example: 20
+            retryLimit:
+              type: integer
+              example: 3
+            jobs:
+              type: object
+              description: Job statistics
+              properties:
+                queued:
+                  type: integer
+                  example: 300
+                sending:
+                  type: integer
+                  example: 5
+                sent:
+                  type: integer
+                  example: 145
+                failed:
+                  type: integer
+                  example: 0
+            createdBy:
+              type: object
+              properties:
+                id:
+                  type: string
+                username:
+                  type: string
+                role:
+                  type: string
+
+    CreateCampaignRequest:
+      type: object
+      required:
+        - name
+        - batchId
+        - templateId
+        - params
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 100
+          example: Black Friday Promo - Tech Channels
+        description:
+          type: string
+          maxLength: 500
+        batchId:
+          type: string
+          format: cuid
+          example: cl9x2k3j40000356t8g9h1b2c
+        templateId:
+          type: string
+          format: cuid
+          example: cl9x2k3j40000356t8g9h1b2d
+        params:
+          type: object
+          additionalProperties: true
+          description: Template placeholder values
+          example:
+            channel_name: TechNews
+            offer_text: 20% discount on all courses
+        mode:
+          type: string
+          enum: [TEST, LIVE]
+          default: TEST
+          description: TEST sends to operator's account, LIVE sends to all channels
+        deliveryRate:
+          type: integer
+          minimum: 1
+          maximum: 30
+          default: 20
+          description: Messages per minute (constitutional rate limit protection)
+        retryLimit:
+          type: integer
+          minimum: 0
+          maximum: 5
+          default: 3
+
+    Pagination:
+      type: object
+      properties:
+        nextCursor:
+          type: string
+          nullable: true
+        hasMore:
+          type: boolean
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

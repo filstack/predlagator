@@ -1,0 +1,400 @@
+openapi: 3.0.3
+info:
+  title: Channels API
+  version: 1.0.0
+  description: |
+    Channel catalog management endpoints.
+
+    **Permissions**:
+    - List/Read: ADMIN, OPERATOR, AUDITOR
+    - Import: ADMIN, OPERATOR
+    - Update/Delete: ADMIN
+
+servers:
+  - url: https://api.example.com/api
+
+tags:
+  - name: Channels
+    description: Channel catalog operations
+
+paths:
+  /channels:
+    get:
+      tags:
+        - Channels
+      summary: List channels
+      description: |
+        Fetch channels with pagination and filters.
+
+        **Performance**: Uses cursor-based pagination for large datasets.
+        **Permissions**: ADMIN, OPERATOR, AUDITOR
+      operationId: listChannels
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: category
+          in: query
+          description: Filter by category (exact match)
+          schema:
+            type: string
+            example: tech
+        - name: search
+          in: query
+          description: Search by username (partial match, case-insensitive)
+          schema:
+            type: string
+            example: crypto
+        - name: isActive
+          in: query
+          description: Filter by active status
+          schema:
+            type: boolean
+            example: true
+        - name: limit
+          in: query
+          description: Number of results per page (max 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: cursor
+          in: query
+          description: Cursor for pagination (channel ID from previous response)
+          schema:
+            type: string
+            format: cuid
+      responses:
+        '200':
+          description: List of channels
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - channels
+                  - pagination
+                properties:
+                  channels:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Channel'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /channels/import:
+    post:
+      tags:
+        - Channels
+      summary: Import channels from JSONL file
+      description: |
+        Import channels from JSONL file (format from batched_files/).
+
+        **File Format**: Each line is a JSON object:
+        ```json
+        {"category": "tech", "tgstat_url": "https://tgstat.ru/channel/@cryptonews", "username": "cryptonews", "collected_at": "2025-09-29T11:49:45Z"}
+        ```
+
+        **Permissions**: ADMIN, OPERATOR
+        **Audit**: Logs CHANNEL_IMPORTED with count
+        **Vercel Constraint**: Queues import job on Railway worker (10s function timeout)
+      operationId: importChannels
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: JSONL file (<10 MB)
+                skipDuplicates:
+                  type: boolean
+                  default: true
+                  description: Ignore channels with existing usernames
+      responses:
+        '202':
+          description: Import job queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId:
+                    type: string
+                    format: cuid
+                    example: cl9x2k3j40000356t8g9h1b2c
+                  message:
+                    type: string
+                    example: Import job queued. Check status at /channels/import-status/:jobId
+        '400':
+          description: Invalid file format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: INVALID_FILE_FORMAT
+                  message: File must be valid JSONL (one JSON object per line)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /channels/import-status/{jobId}:
+    get:
+      tags:
+        - Channels
+      summary: Check import job status
+      description: |
+        Poll this endpoint to track import progress.
+
+        **Polling**: Frontend should poll every 2-3 seconds while status is "processing".
+      operationId: getImportStatus
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: cuid
+      responses:
+        '200':
+          description: Import job status
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - jobId
+                  - status
+                properties:
+                  jobId:
+                    type: string
+                    format: cuid
+                  status:
+                    type: string
+                    enum: [queued, processing, completed, failed]
+                  progress:
+                    type: integer
+                    description: Channels imported so far
+                    example: 1523
+                  total:
+                    type: integer
+                    description: Total channels in file
+                    example: 2000
+                  error:
+                    type: string
+                    nullable: true
+                    description: Error message if status is "failed"
+        '404':
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /channels/{id}:
+    get:
+      tags:
+        - Channels
+      summary: Get channel details
+      description: |
+        Fetch single channel with metadata.
+
+        **Permissions**: ADMIN, OPERATOR, AUDITOR
+      operationId: getChannel
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: cuid
+      responses:
+        '200':
+          description: Channel details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChannelDetail'
+        '404':
+          description: Channel not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    patch:
+      tags:
+        - Channels
+      summary: Update channel
+      description: |
+        Update channel metadata (category, active status).
+
+        **Permissions**: ADMIN only
+        **Audit**: Logs CHANNEL_UPDATED
+      operationId: updateChannel
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: cuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                category:
+                  type: string
+                  example: tech
+                isActive:
+                  type: boolean
+                  example: false
+      responses:
+        '200':
+          description: Channel updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChannelDetail'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  schemas:
+    Channel:
+      type: object
+      required:
+        - id
+        - username
+        - category
+        - isActive
+      properties:
+        id:
+          type: string
+          format: cuid
+          example: cl9x2k3j40000356t8g9h1b2c
+        username:
+          type: string
+          example: cryptonews
+          description: Telegram username (without @ prefix)
+        category:
+          type: string
+          example: tech
+        isActive:
+          type: boolean
+          example: true
+        memberCount:
+          type: integer
+          nullable: true
+          example: 125000
+        errorCount:
+          type: integer
+          example: 0
+
+    ChannelDetail:
+      allOf:
+        - $ref: '#/components/schemas/Channel'
+        - type: object
+          properties:
+            title:
+              type: string
+              nullable: true
+              example: Crypto News Daily
+            description:
+              type: string
+              nullable: true
+              example: Latest cryptocurrency news and market analysis
+            tgstatUrl:
+              type: string
+              nullable: true
+              example: https://tgstat.ru/channel/@cryptonews
+            collectedAt:
+              type: string
+              format: date-time
+              example: '2025-09-29T11:49:45Z'
+            lastChecked:
+              type: string
+              format: date-time
+              nullable: true
+              example: '2025-10-13T08:00:00Z'
+            lastError:
+              type: string
+              nullable: true
+              example: PEER_ID_INVALID
+
+    Pagination:
+      type: object
+      properties:
+        nextCursor:
+          type: string
+          nullable: true
+          description: Cursor for next page (null if last page)
+          example: cl9x2k3j40000356t8g9h1b2c
+        hasMore:
+          type: boolean
+          example: true
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
+
+  responses:
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: FORBIDDEN
+              message: This operation requires ADMIN role
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

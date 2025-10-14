@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell.exe:*)",
+      "Bash(FEATURE_NUM=\"001\")",
+      "Bash(BRANCH_NAME=\"001-telegram-channel-broadcast\")",
+      "Bash(FEATURE_DIR=\"specs/$BRANCH_NAME\")",
+      "Bash(git checkout:*)",
+      "Bash(claude mcp add:*)",
+      "Bash(dir:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(npm init -y)",
+      "Bash(npm install:*)",
+      "Read(//d/00_dev/01_Ведомості/Новая папка/бот_рассылка/frontend/**)",
+      "Read(//d/00_dev/01_Ведомості/Новая папка/бот_рассылка/**)",
+      "Bash(npm run dev)",
+      "Bash(npm uninstall:*)",
+      "Bash(cat:*)",
+      "Bash(npm run generate:*)",
+      "Bash(npm run db:push:*)",
+      "Bash(npm run db:seed:*)",
+      "Bash(curl:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

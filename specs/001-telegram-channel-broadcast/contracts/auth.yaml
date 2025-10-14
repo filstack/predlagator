@@ -1,0 +1,210 @@
+openapi: 3.0.3
+info:
+  title: Authentication API
+  version: 1.0.0
+  description: |
+    User authentication and authorization endpoints.
+
+    **Security Model**: JWT-based stateless authentication
+    - Login returns JWT token valid for 7 days
+    - Token includes userId and role claims
+    - Token must be sent in Authorization header: `Bearer <token>`
+
+servers:
+  - url: https://api.example.com/api
+
+tags:
+  - name: Auth
+    description: Authentication operations
+
+paths:
+  /auth/login:
+    post:
+      tags:
+        - Auth
+      summary: Authenticate user
+      description: |
+        Validates username/password and returns JWT token.
+
+        **Rate Limiting**: Max 5 attempts per minute per IP
+        **Audit**: Logs USER_LOGIN or USER_LOGIN_FAILED
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 50
+                  example: operator1
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  example: SecurePass123!
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - token
+                  - user
+                properties:
+                  token:
+                    type: string
+                    description: JWT token (valid for 7 days)
+                    example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: INVALID_CREDENTIALS
+                  message: Username or password is incorrect
+        '429':
+          description: Too many login attempts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: RATE_LIMIT_EXCEEDED
+                  message: Too many login attempts. Try again in 60 seconds
+
+  /auth/logout:
+    post:
+      tags:
+        - Auth
+      summary: Logout user
+      description: |
+        Invalidates current JWT token (client-side deletion).
+
+        **Audit**: Logs USER_LOGOUT
+      operationId: logout
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Logged out successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/verify:
+    get:
+      tags:
+        - Auth
+      summary: Verify JWT token
+      description: |
+        Validates JWT token and returns user info.
+        Used by frontend on app load to restore session.
+      operationId: verifyToken
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Token is valid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  schemas:
+    User:
+      type: object
+      required:
+        - id
+        - username
+        - role
+      properties:
+        id:
+          type: string
+          format: cuid
+          example: cl9x2k3j40000356t8g9h1b2c
+        username:
+          type: string
+          example: operator1
+        role:
+          type: string
+          enum: [ADMIN, OPERATOR, AUDITOR]
+          example: OPERATOR
+        createdAt:
+          type: string
+          format: date-time
+          example: '2025-10-01T12:00:00Z'
+        lastLoginAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: '2025-10-13T08:30:00Z'
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              example: INVALID_CREDENTIALS
+            message:
+              type: string
+              example: Username or password is incorrect
+            details:
+              type: object
+              additionalProperties: true
+
+  responses:
+    Unauthorized:
+      description: Authentication required or token invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: Invalid or expired token
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT token obtained from /auth/login endpoint.
+        Include in Authorization header: `Authorization: Bearer <token>`

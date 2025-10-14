@@ -1,0 +1,400 @@
+openapi: 3.0.3
+info:
+  title: Templates API
+  version: 1.0.0
+  description: |
+    Message template management endpoints.
+
+    **Permissions**:
+    - List/Read: ADMIN, OPERATOR, AUDITOR
+    - Create/Update/Delete: ADMIN, OPERATOR
+
+servers:
+  - url: https://api.example.com/api
+
+tags:
+  - name: Templates
+    description: Template operations
+
+paths:
+  /templates:
+    get:
+      tags:
+        - Templates
+      summary: List templates
+      description: |
+        Fetch all message templates.
+
+        **Permissions**: ADMIN, OPERATOR, AUDITOR
+      operationId: listTemplates
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 100
+        - name: cursor
+          in: query
+          schema:
+            type: string
+            format: cuid
+      responses:
+        '200':
+          description: List of templates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  templates:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Template'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+    post:
+      tags:
+        - Templates
+      summary: Create template
+      description: |
+        Create new message template.
+
+        **Permissions**: ADMIN, OPERATOR
+        **Placeholder Syntax**: Use {{placeholder_name}} for dynamic values
+        **Media**: Optional photo/video/document attachment
+        **Validation**:
+        - Content cannot be empty
+        - Media URL must be valid (http/https or base64)
+        - Media files must be <50 MB (Telegram limit)
+      operationId: createTemplate
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTemplateRequest'
+      responses:
+        '201':
+          description: Template created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateDetail'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                emptyContent:
+                  value:
+                    error:
+                      code: INVALID_INPUT
+                      message: Template content cannot be empty
+                invalidMediaUrl:
+                  value:
+                    error:
+                      code: INVALID_MEDIA_URL
+                      message: Media URL must be valid HTTP/HTTPS URL or base64 string
+
+  /templates/{id}:
+    get:
+      tags:
+        - Templates
+      summary: Get template details
+      description: |
+        Fetch template with usage statistics.
+
+        **Permissions**: ADMIN, OPERATOR, AUDITOR
+      operationId: getTemplate
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: cuid
+      responses:
+        '200':
+          description: Template details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateDetail'
+        '404':
+          description: Template not found
+
+    patch:
+      tags:
+        - Templates
+      summary: Update template
+      description: |
+        Update template content or metadata.
+
+        **Permissions**: ADMIN, OPERATOR
+        **Note**: Updating template does NOT affect already created campaigns (immutability)
+      operationId: updateTemplate
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: cuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  minLength: 3
+                  maxLength: 100
+                content:
+                  type: string
+                  minLength: 1
+                  maxLength: 4096
+                description:
+                  type: string
+                  maxLength: 500
+                mediaType:
+                  type: string
+                  enum: [PHOTO, VIDEO, DOCUMENT]
+                  nullable: true
+                mediaUrl:
+                  type: string
+                  nullable: true
+      responses:
+        '200':
+          description: Template updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateDetail'
+
+    delete:
+      tags:
+        - Templates
+      summary: Delete template
+      description: |
+        Delete template (soft delete if used in campaigns).
+
+        **Permissions**: ADMIN, OPERATOR
+        **Constraint**: Cannot delete template with RUNNING campaigns
+      operationId: deleteTemplate
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: cuid
+      responses:
+        '204':
+          description: Template deleted
+        '400':
+          description: Cannot delete template in use
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: TEMPLATE_IN_USE
+                  message: Cannot delete template with running campaigns
+
+  /templates/{id}/preview:
+    post:
+      tags:
+        - Templates
+      summary: Preview template with params
+      description: |
+        Render template with placeholder values (test before campaign creation).
+
+        **Permissions**: ADMIN, OPERATOR, AUDITOR
+        **Constitutional Principle III**: Test mode first - operators should preview before sending
+      operationId: previewTemplate
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: cuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - params
+              properties:
+                params:
+                  type: object
+                  additionalProperties: true
+                  description: Placeholder values for rendering
+                  example:
+                    channel_name: TechNews
+                    offer_text: 20% discount on all courses
+      responses:
+        '200':
+          description: Rendered template
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  renderedContent:
+                    type: string
+                    example: 'Привет, TechNews! Специальное предложение: 20% discount on all courses'
+                  mediaType:
+                    type: string
+                    enum: [PHOTO, VIDEO, DOCUMENT]
+                    nullable: true
+                  mediaUrl:
+                    type: string
+                    nullable: true
+
+components:
+  schemas:
+    Template:
+      type: object
+      required:
+        - id
+        - name
+        - content
+      properties:
+        id:
+          type: string
+          format: cuid
+          example: cl9x2k3j40000356t8g9h1b2c
+        name:
+          type: string
+          example: Promo Template Q1 2025
+        content:
+          type: string
+          description: Message text with {{placeholders}}
+          example: 'Привет, {{channel_name}}! Специальное предложение: {{offer_text}}'
+        mediaType:
+          type: string
+          enum: [PHOTO, VIDEO, DOCUMENT]
+          nullable: true
+          example: PHOTO
+        usageCount:
+          type: integer
+          description: Number of campaigns using this template
+          example: 5
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    TemplateDetail:
+      allOf:
+        - $ref: '#/components/schemas/Template'
+        - type: object
+          properties:
+            description:
+              type: string
+              nullable: true
+              example: Black Friday promotion template for tech channels
+            mediaUrl:
+              type: string
+              nullable: true
+              example: https://example.com/images/promo.jpg
+            campaigns:
+              type: array
+              description: Recent campaigns using this template
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  status:
+                    type: string
+                  createdAt:
+                    type: string
+                    format: date-time
+
+    CreateTemplateRequest:
+      type: object
+      required:
+        - name
+        - content
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 100
+          example: Promo Template Q1 2025
+        content:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          description: Message text with {{placeholders}}
+          example: 'Привет, {{channel_name}}! Специальное предложение: {{offer_text}}'
+        description:
+          type: string
+          maxLength: 500
+          example: Black Friday promotion template for tech channels
+        mediaType:
+          type: string
+          enum: [PHOTO, VIDEO, DOCUMENT]
+          nullable: true
+        mediaUrl:
+          type: string
+          nullable: true
+          description: URL or base64-encoded media
+          example: https://example.com/images/promo.jpg
+
+    Pagination:
+      type: object
+      properties:
+        nextCursor:
+          type: string
+          nullable: true
+        hasMore:
+          type: boolean
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
