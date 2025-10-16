@@ -15,6 +15,7 @@
   "license": "ISC",
   "dependencies": {
     "@prisma/client": "^6.17.1",
+    "@supabase/supabase-js": "^2.75.0",
     "bcryptjs": "^3.0.2",
     "bullmq": "^5.61.0",
     "cors": "^2.8.5",
@@ -26,7 +27,8 @@
     "prisma": "5.7",
     "telegram": "^2.26.22",
     "tsx": "^4.20.6",
-    "typescript": "5.3"
+    "typescript": "5.3",
+    "zod": "^4.1.12"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

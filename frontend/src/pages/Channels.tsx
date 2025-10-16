@@ -1,6 +1,6 @@
 // frontend/src/pages/Channels.tsx
 import { useState, useEffect } from 'react'
-import { channelsApi, Channel, ChannelQuery } from '../lib/api-client'
+import { useChannelStore } from '../stores/channel-store'
 import {
   Table,
   TableBody,
@@ -13,56 +13,48 @@ import { Input } from '../components/ui/input'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
+import { formatDate, formatNumber } from '../lib/formatters'
 
 export default function Channels() {
-  const [channels, setChannels] = useState<Channel[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [query, setQuery] = useState<ChannelQuery>({
-    page: 1,
-    limit: 20,
-  })
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 20,
-    total: 0,
-    pages: 0,
-  })
+  const channels = useChannelStore((state) => state.channels) || []
+  const isLoading = useChannelStore((state) => state.isLoading)
+  const error = useChannelStore((state) => state.error)
+  const totalCount = useChannelStore((state) => state.totalCount) || 0
+  const currentPage = useChannelStore((state) => state.currentPage) || 1
+  const fetchChannels = useChannelStore((state) => state.fetchChannels)
+  const clearError = useChannelStore((state) => state.clearError)
 
-  const fetchChannels = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      const response = await channelsApi.list(query)
-      setChannels(response.data.data)
-      setPagination(response.data.pagination)
-    } catch (err: any) {
-      setError(err.message || 'Failed to fetch channels')
-      console.error('Error fetching channels:', err)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const [search, setSearch] = useState('')
+  const [category, setCategory] = useState<string | undefined>()
+  const limit = 20
 
   useEffect(() => {
-    fetchChannels()
-  }, [query])
+    fetchChannels({
+      page: currentPage,
+      limit,
+      search: search || undefined,
+      category,
+    })
+  }, [currentPage, search, category, fetchChannels])
 
-  const handleSearch = (search: string) => {
-    setQuery((prev) => ({ ...prev, search, page: 1 }))
+  const handleSearch = (value: string) => {
+    setSearch(value)
   }
 
   const handleNextPage = () => {
-    if (pagination.page < pagination.pages) {
-      setQuery((prev) => ({ ...prev, page: prev.page! + 1 }))
+    const totalPages = Math.ceil(totalCount / limit)
+    if (currentPage < totalPages) {
+      fetchChannels({ page: currentPage + 1, limit, search: search || undefined, category })
     }
   }
 
   const handlePrevPage = () => {
-    if (pagination.page > 1) {
-      setQuery((prev) => ({ ...prev, page: prev.page! - 1 }))
+    if (currentPage > 1) {
+      fetchChannels({ page: currentPage - 1, limit, search: search || undefined, category })
     }
   }
+
+  const totalPages = Math.ceil(totalCount / limit)
 
   return (
     <div className="container mx-auto py-8">
@@ -75,6 +67,7 @@ export default function Channels() {
           <div className="mb-6">
             <Input
               placeholder="Search channels..."
+              value={search}
               onChange={(e) => handleSearch(e.target.value)}
               className="max-w-md"
             />
@@ -83,15 +76,20 @@ export default function Channels() {
           {/* Error */}
           {error && (
             <div className="bg-destructive/10 text-destructive p-4 rounded-md mb-4">
-              Error: {error}
+              <div className="flex justify-between items-center">
+                <span>Error: {error}</span>
+                <Button variant="ghost" size="sm" onClick={clearError}>
+                  ✕
+                </Button>
+              </div>
             </div>
           )}
 
           {/* Loading */}
-          {loading && <div className="text-center py-8">Loading...</div>}
+          {isLoading && <div className="text-center py-8">Loading...</div>}
 
           {/* Table */}
-          {!loading && channels.length > 0 && (
+          {!isLoading && Array.isArray(channels) && channels.length > 0 && (
             <>
               <Table>
                 <TableHeader>
@@ -115,18 +113,16 @@ export default function Channels() {
                       </TableCell>
                       <TableCell>{channel.title || '-'}</TableCell>
                       <TableCell>
-                        {channel.memberCount?.toLocaleString() || '-'}
+                        {channel.memberCount ? formatNumber(channel.memberCount) : '-'}
                       </TableCell>
                       <TableCell>
                         {channel.isActive ? (
                           <Badge variant="default">Active</Badge>
                         ) : (
-                          <Badge variant="destructive">Inactive</Badge>
+                          <Badge variant="secondary">Inactive</Badge>
                         )}
                       </TableCell>
-                      <TableCell>
-                        {new Date(channel.createdAt).toLocaleDateString()}
-                      </TableCell>
+                      <TableCell>{formatDate(channel.createdAt)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -135,27 +131,26 @@ export default function Channels() {
               {/* Pagination */}
               <div className="flex items-center justify-between mt-4">
                 <div className="text-sm text-muted-foreground">
-                  Showing {(pagination.page - 1) * pagination.limit + 1} to{' '}
-                  {Math.min(
-                    pagination.page * pagination.limit,
-                    pagination.total
-                  )}{' '}
-                  of {pagination.total} channels
+                  Showing {(currentPage - 1) * limit + 1} to{' '}
+                  {Math.min(currentPage * limit, totalCount)} of {totalCount} channels
                 </div>
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={handlePrevPage}
-                    disabled={pagination.page === 1}
+                    disabled={currentPage === 1 || isLoading}
                   >
                     Previous
                   </Button>
+                  <span className="text-sm text-muted-foreground flex items-center px-4">
+                    Page {currentPage} of {totalPages}
+                  </span>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={handleNextPage}
-                    disabled={pagination.page === pagination.pages}
+                    disabled={currentPage === totalPages || isLoading}
                   >
                     Next
                   </Button>
@@ -165,9 +160,9 @@ export default function Channels() {
           )}
 
           {/* Empty state */}
-          {!loading && channels.length === 0 && (
+          {!isLoading && Array.isArray(channels) && channels.length === 0 && (
             <div className="text-center py-8 text-muted-foreground">
-              No channels found
+              {search ? 'No channels found matching your search' : 'No channels found'}
             </div>
           )}
         </CardContent>

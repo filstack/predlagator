@@ -1,49 +1,31 @@
-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { MainLayout } from './components/layout/MainLayout'
+import { ErrorBoundary } from './components/ErrorBoundary'
+import { Toaster } from './components/ui/toaster'
 import Channels from './pages/Channels'
+import Batches from './pages/Batches'
+import Templates from './pages/Templates'
+import Campaigns from './pages/Campaigns'
+import Settings from './pages/Settings'
+import Test from './pages/Test'
 
 function App() {
   return (
-    <BrowserRouter>
-      <div className="min-h-screen bg-background text-foreground">
-        {/* Navigation */}
-        <nav className="border-b">
-          <div className="container mx-auto px-4 py-4">
-            <div className="flex items-center justify-between">
-              <h1 className="text-2xl font-bold">
-                Telegram Broadcast System
-              </h1>
-              <div className="flex gap-4">
-                <Link
-                  to="/"
-                  className="text-sm hover:text-primary transition-colors"
-                >
-                  Channels
-                </Link>
-                <Link
-                  to="/batches"
-                  className="text-sm hover:text-primary transition-colors"
-                >
-                  Batches
-                </Link>
-                <Link
-                  to="/campaigns"
-                  className="text-sm hover:text-primary transition-colors"
-                >
-                  Campaigns
-                </Link>
-              </div>
-            </div>
-          </div>
-        </nav>
-
-        {/* Routes */}
+    <ErrorBoundary>
+      <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Channels />} />
-          <Route path="/batches" element={<div className="p-8">Batches (coming soon)</div>} />
-          <Route path="/campaigns" element={<div className="p-8">Campaigns (coming soon)</div>} />
+          <Route path="/" element={<MainLayout />}>
+            <Route index element={<Channels />} />
+            <Route path="batches" element={<Batches />} />
+            <Route path="templates" element={<Templates />} />
+            <Route path="campaigns" element={<Campaigns />} />
+            <Route path="test" element={<Test />} />
+            <Route path="settings" element={<Settings />} />
+          </Route>
         </Routes>
-      </div>
-    </BrowserRouter>
+        <Toaster />
+      </BrowserRouter>
+    </ErrorBoundary>
   )
 }
 

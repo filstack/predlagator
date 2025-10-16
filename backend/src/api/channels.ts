@@ -1,7 +1,12 @@
 // backend/src/api/channels.ts
 import { Router } from 'express'
 import prisma from '../lib/prisma'
-import { channelQuerySchema } from '../../../shared/src/schemas/channel'
+import { validate } from '../middleware/validate'
+import {
+  channelQuerySchema,
+  createChannelSchema,
+  updateChannelSchema,
+} from '../../../shared/src/schemas/channel'
 
 const router = Router()
 
@@ -19,8 +24,8 @@ router.get('/', async (req, res, next) => {
 
     if (search) {
       where.OR = [
-        { username: { contains: search, mode: 'insensitive' } },
-        { title: { contains: search, mode: 'insensitive' } },
+        { username: { contains: search } },
+        { title: { contains: search } },
       ]
     }
 
@@ -90,6 +95,61 @@ router.get('/meta/categories', async (req, res, next) => {
         count: cat._count.category,
       }))
     )
+  } catch (error) {
+    next(error)
+  }
+})
+
+// POST /api/channels - Create new channel
+router.post('/', validate(createChannelSchema, 'body'), async (req, res, next) => {
+  try {
+    const { username, category, tgstatUrl, title, description, memberCount, isVerified, collectedAt } = req.body
+
+    const channel = await prisma.channel.create({
+      data: {
+        username,
+        category,
+        tgstatUrl,
+        title,
+        description,
+        memberCount,
+        isVerified: isVerified ?? false,
+        collectedAt: collectedAt || new Date(),
+        isActive: true,
+        errorCount: 0,
+      },
+    })
+
+    res.status(201).json(channel)
+  } catch (error) {
+    next(error)
+  }
+})
+
+// PATCH /api/channels/:id - Update channel
+router.patch('/:id', validate(updateChannelSchema, 'body'), async (req, res, next) => {
+  try {
+    const updates = req.body
+
+    const channel = await prisma.channel.update({
+      where: { id: req.params.id },
+      data: updates,
+    })
+
+    res.json(channel)
+  } catch (error) {
+    next(error)
+  }
+})
+
+// DELETE /api/channels/:id - Delete channel
+router.delete('/:id', async (req, res, next) => {
+  try {
+    await prisma.channel.delete({
+      where: { id: req.params.id },
+    })
+
+    res.status(204).send()
   } catch (error) {
     next(error)
   }

@@ -1,0 +1,84 @@
+# Environment Variables
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+!.env.example
+
+# Dependencies
+node_modules/
+**/node_modules/
+.pnp
+.pnp.js
+
+# Build Outputs
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Database
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+shared/prisma/dev.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Testing
+coverage/
+*.lcov
+.nyc_output
+
+# IDEs and Editors
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS Files
+Thumbs.db
+Desktop.ini
+
+# Deployment
+.vercel/
+.railway/
+.netlify/
+
+# Cache
+.cache/
+.parcel-cache/
+.next/
+.nuxt/
+.temp/
+.tmp/
+
+# Misc
+*.pem
+.eslintcache
+.stylelintcache
+
+# Batched Files (optional - keep uploaded files)
+# batched_files/*.jsonl
+# batched_files/*.csv
+
+# Session Strings (IMPORTANT - never commit)
+session_*.txt
+sessions/
+
+# Secrets
+*.key
+*.secret

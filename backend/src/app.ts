@@ -12,9 +12,15 @@ const app = express()
 app.use(helmet())
 
 // CORS configuration
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:5174',
+  process.env.CORS_ORIGIN,
+].filter(Boolean)
+
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    origin: allowedOrigins,
     credentials: true,
   })
 )
@@ -29,42 +35,13 @@ app.get('/health', (req, res) => {
 })
 
 // API routes
-import channelsRouter from './api/channels'
+import apiRouter from './api'
+import { errorHandler, notFoundHandler } from './middleware/error-handler'
 
-app.use('/api/channels', channelsRouter)
+app.use('/api', apiRouter)
 
-app.get('/api', (req, res) => {
-  res.json({
-    message: 'Telegram Broadcast API',
-    version: '1.0.0',
-    endpoints: {
-      health: 'GET /health',
-      channels: 'GET /api/channels',
-      channelById: 'GET /api/channels/:id',
-      categories: 'GET /api/channels/meta/categories',
-    },
-  })
-})
-
-// Error handler middleware
-app.use(
-  (
-    err: Error,
-    req: express.Request,
-    res: express.Response,
-    next: express.NextFunction
-  ) => {
-    console.error('Error:', err)
-    res.status(500).json({
-      error: 'Internal Server Error',
-      message: process.env.NODE_ENV === 'development' ? err.message : undefined,
-    })
-  }
-)
-
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ error: 'Not Found' })
-})
+// Error handling middleware (must be last)
+app.use(notFoundHandler)
+app.use(errorHandler)
 
 export default app
