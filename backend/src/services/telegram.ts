@@ -1,7 +1,7 @@
 // backend/src/services/telegram.ts
 import { Api } from 'telegram/tl'
 import { telegramClient } from '../lib/telegram-client'
-import { rateLimitTracker } from './rate-limit-tracker'
+// import { rateLimitTracker } from './rate-limit-tracker' // TODO: Migrate to pg-boss rate limiting
 import * as path from 'path'
 import * as fs from 'fs/promises'
 
@@ -45,20 +45,10 @@ export class TelegramService {
     }
 
     try {
-      // Проверяем rate limit перед отправкой
-      const rateLimitKey = 'telegram:global' // Можно использовать более специфичные ключи
-      const blocked = await rateLimitTracker.isBlocked(rateLimitKey)
-
-      if (blocked) {
-        const remaining = await rateLimitTracker.getRemainingWaitTime(rateLimitKey)
-        console.log(`⏸️  Rate limit активен, осталось ${remaining}с`)
-        return {
-          success: false,
-          error: `Rate limit active, wait ${remaining} seconds`,
-          errorCode: 'FLOOD_WAIT',
-          waitTime: remaining,
-        }
-      }
+      // TODO: Migrate rate limiting to pg-boss
+      // const rateLimitKey = 'telegram:global'
+      // const blocked = await rateLimitTracker.isBlocked(rateLimitKey)
+      // if (blocked) { ... }
 
       // Получаем клиента
       const client = await telegramClient.getClient()
@@ -179,9 +169,8 @@ export class TelegramService {
       const match = errorMessage.match(/FLOOD_WAIT_(\d+)/)
       const waitTime = match ? parseInt(match[1]) : 30
 
-      // Записываем в rate limit tracker
-      const rateLimitKey = 'telegram:global'
-      await rateLimitTracker.recordFloodWait(rateLimitKey, waitTime, errorMessage)
+      // TODO: Migrate to pg-boss rate limiting
+      // await rateLimitTracker.recordFloodWait(rateLimitKey, waitTime, errorMessage)
 
       return {
         success: false,

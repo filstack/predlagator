@@ -1,6 +1,6 @@
 // backend/src/api/test.ts
 import { Router } from 'express'
-import { prisma } from '../lib/prisma'
+import { getSupabase } from '../lib/supabase'
 import { telegramClient } from '../lib/telegram-client'
 
 const router = Router()
@@ -21,11 +21,14 @@ router.post('/send-message', async (req, res) => {
     }
 
     // Получаем канал из БД
-    const channel = await prisma.channel.findUnique({
-      where: { id: channelId },
-    })
+    const supabase = getSupabase()
+    const { data: channel, error: channelError } = await supabase
+      .from('channels')
+      .select('*')
+      .eq('id', channelId)
+      .single()
 
-    if (!channel) {
+    if (channelError || !channel) {
       return res.status(404).json({
         error: 'Канал не найден',
       })
@@ -116,21 +119,17 @@ router.get('/telegram-status', async (req, res) => {
  */
 router.get('/channels', async (req, res) => {
   try {
-    const channels = await prisma.channel.findMany({
-      select: {
-        id: true,
-        username: true,
-        title: true,
-        isActive: true,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    })
+    const supabase = getSupabase()
+    const { data: channels, error } = await supabase
+      .from('channels')
+      .select('id, username, title, is_active')
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
 
     return res.json({
       channels,
-      count: channels.length,
+      count: channels?.length || 0,
     })
   } catch (error: any) {
     console.error('✗ Ошибка получения каналов:', error)

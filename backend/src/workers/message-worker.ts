@@ -1,205 +1,164 @@
-// backend/src/workers/message-worker.ts
-import { Worker, Job } from 'bullmq'
-import { redisConnection } from '../lib/redis'
-import prisma from '../lib/prisma'
-import { SendMessageJobData } from '../queues/campaign-queue'
-import { telegramService } from '../services/telegram'
-
 /**
- * Воркер для отправки сообщений в Telegram каналы
+ * Message Worker
+ * Processes message delivery jobs to Telegram channels
  */
-export function createMessageWorker() {
-  const worker = new Worker<SendMessageJobData>(
-    'message-sending',
-    async (job: Job<SendMessageJobData>) => {
-      const { jobId, campaignId, channelId, channelUsername, templateContent, mediaType, mediaUrl } =
-        job.data
 
-      console.log(`🔄 Обработка джоба ${jobId}: @${channelUsername}`)
+import PgBoss from 'pg-boss';
+import { getSupabase } from '../lib/supabase';
+import { telegramService } from '../services/telegram';
+import { SendMessageJobData, QUEUE_NAMES } from '../types/queue-jobs';
 
-      try {
-        // Обновляем статус джоба в БД
-        await prisma.job.update({
-          where: { id: jobId },
-          data: {
-            status: 'SENDING',
-            startedAt: new Date(),
-            attempts: {
-              increment: 1,
-            },
-          },
-        })
-
-        // Отправляем сообщение через Telegram
-        const result = await telegramService.sendMessage(channelUsername, templateContent, {
-          mediaType,
-          mediaUrl,
-        })
-
-        if (result.success) {
-          // Успешная отправка
-          await prisma.job.update({
-            where: { id: jobId },
-            data: {
-              status: 'SENT',
-              sentAt: new Date(),
-            },
-          })
-
-          // Обновляем прогресс кампании
-          await updateCampaignProgress(campaignId)
-
-          console.log(`✅ Сообщение отправлено в @${channelUsername}`)
-
-          return {
-            success: true,
-            channel: channelUsername,
-            messageId: result.messageId,
-          }
-        } else {
-          // Ошибка отправки - обрабатываем FLOOD_WAIT отдельно
-          if (result.errorCode === 'FLOOD_WAIT' && result.waitTime) {
-            console.log(
-              `⏳ FLOOD_WAIT для @${channelUsername}: повтор через ${result.waitTime}с`
-            )
-
-            // Обновляем джоб со статусом QUEUED для повтора
-            await prisma.job.update({
-              where: { id: jobId },
-              data: {
-                status: 'QUEUED',
-                errorMessage: result.error,
-              },
-            })
-
-            // Выбрасываем ошибку с задержкой для BullMQ
-            const error = new Error(result.error || 'FLOOD_WAIT')
-            ;(error as any).delay = result.waitTime * 1000 // Задержка в мс
-            throw error
-          }
-
-          // Другие ошибки
-          throw new Error(result.error || 'Unknown error')
-        }
-      } catch (error: any) {
-        console.error(`❌ Ошибка отправки в @${channelUsername}:`, error.message)
-
-        // Получаем информацию для принятия решения о retry
-        const currentJob = await prisma.job.findUnique({
-          where: { id: jobId },
-          select: { attempts: true },
-        })
-
-        const campaign = await prisma.campaign.findUnique({
-          where: { id: campaignId },
-          select: { retryLimit: true },
-        })
-
-        const shouldRetry = currentJob && campaign && currentJob.attempts < campaign.retryLimit
-
-        // Для FLOOD_WAIT не увеличиваем errorCount канала (это не проблема канала)
-        const isFloodWait = error.message.includes('FLOOD_WAIT') || error.message.includes('Rate limit')
-
-        if (!isFloodWait) {
-          // Обновляем errorCount канала только для реальных ошибок
-          await prisma.channel.update({
-            where: { id: channelId },
-            data: {
-              errorCount: {
-                increment: 1,
-              },
-              lastError: error.message,
-            },
-          })
-
-          // Проверяем, нужно ли деактивировать канал
-          const channel = await prisma.channel.findUnique({
-            where: { id: channelId },
-            select: { errorCount: true },
-          })
-
-          if (channel && channel.errorCount >= 5) {
-            await prisma.channel.update({
-              where: { id: channelId },
-              data: {
-                isActive: false,
-              },
-            })
-            console.warn(`⚠️ Канал @${channelUsername} деактивирован после 5 ошибок`)
-          }
-        }
-
-        // Обновляем статус джоба
-        await prisma.job.update({
-          where: { id: jobId },
-          data: {
-            status: shouldRetry ? 'QUEUED' : 'FAILED',
-            errorMessage: error.message,
-            failedAt: shouldRetry ? null : new Date(),
-          },
-        })
-
-        // Обновляем прогресс кампании
-        await updateCampaignProgress(campaignId)
-
-        throw error // Пробрасываем ошибку для BullMQ
-      }
-    },
+export async function createMessageWorker(boss: PgBoss) {
+  await boss.work<SendMessageJobData>(
+    QUEUE_NAMES.SEND_MESSAGE,
     {
-      connection: redisConnection,
-      concurrency: 10, // Параллельная отправка до 10 сообщений
-      limiter: {
-        max: 20, // Максимум 20 джобов
-        duration: 60000, // за 60 секунд (rate limiting)
-      },
+      batchSize: 10,
+      pollingIntervalSeconds: 2
+    },
+    async (jobs) => {
+      // Process jobs in parallel
+      await Promise.allSettled(jobs.map(job => processMessageJob(job, boss)));
     }
-  )
+  );
 
-  // Слушатели событий
-  worker.on('completed', (job) => {
-    console.log(`✅ Воркер сообщений завершил джоб ${job.id}`)
-  })
-
-  worker.on('failed', (job, err) => {
-    console.error(`❌ Воркер сообщений провалил джоб ${job?.id}:`, err.message)
-  })
-
-  worker.on('error', (err) => {
-    console.error('❌ Ошибка воркера сообщений:', err)
-  })
-
-  worker.on('stalled', (jobId) => {
-    console.warn(`⚠️ Джоб ${jobId} застрял (stalled)`)
-  })
-
-  return worker
+  console.log('📨 Message worker registered');
 }
 
-/**
- * Обновить прогресс кампании
- */
+async function processMessageJob(job: PgBoss.Job<SendMessageJobData>, boss: PgBoss) {
+  const { jobId, campaignId, channelId, channelUsername, templateContent, mediaType, mediaUrl } = job.data;
+  const supabase = getSupabase();
+
+  try {
+    // 1. Update job status: SENDING
+    await supabase
+      .from('jobs')
+      .update({
+        status: 'SENDING',
+        started_at: new Date().toISOString(),
+        attempts: job.data.attempt + 1
+      })
+      .eq('id', jobId);
+
+    // 2. Send message via Telegram
+    const result = await telegramService.sendMessage(channelUsername, templateContent, {
+      mediaType,
+      mediaUrl
+    });
+
+    if (result.success) {
+      // 3a. Success: Update job status
+      await supabase
+        .from('jobs')
+        .update({
+          status: 'SENT',
+          sent_at: new Date().toISOString()
+        })
+        .eq('id', jobId);
+
+      await updateCampaignProgress(campaignId);
+
+      console.log(`✅ Sent message to ${channelUsername}`);
+
+    } else {
+      // 3b. Handle errors
+      if (result.errorCode === 'FLOOD_WAIT' && result.waitTime) {
+        // FLOOD_WAIT: Retry after delay
+        console.log(`⏳ FLOOD_WAIT for ${channelUsername}: retry in ${result.waitTime}s`);
+
+        await boss.fail(job.id, { retryDelay: result.waitTime });
+
+        await supabase
+          .from('jobs')
+          .update({
+            status: 'QUEUED',
+            error_message: result.error
+          })
+          .eq('id', jobId);
+
+      } else {
+        // Other errors: Mark as failed
+        throw new Error(result.error || 'Unknown error');
+      }
+    }
+
+  } catch (error: any) {
+    // 4. Handle failures
+    const { data: currentJob } = await supabase
+      .from('jobs')
+      .select('attempts')
+      .eq('id', jobId)
+      .single();
+
+    const { data: campaign } = await supabase
+      .from('campaigns')
+      .select('retry_limit')
+      .eq('id', campaignId)
+      .single();
+
+    const shouldRetry = currentJob && campaign && currentJob.attempts < campaign.retry_limit;
+
+    if (!shouldRetry) {
+      // Final failure
+      await supabase
+        .from('jobs')
+        .update({
+          status: 'FAILED',
+          failed_at: new Date().toISOString(),
+          error_message: error.message
+        })
+        .eq('id', jobId);
+
+      // Update channel error count
+      const { data: channel } = await supabase
+        .from('channels')
+        .select('error_count')
+        .eq('id', channelId)
+        .single();
+
+      if (channel) {
+        const newErrorCount = channel.error_count + 1;
+
+        await supabase
+          .from('channels')
+          .update({
+            error_count: newErrorCount,
+            last_error: error.message,
+            is_active: newErrorCount >= 5 ? false : undefined
+          })
+          .eq('id', channelId);
+      }
+
+      await updateCampaignProgress(campaignId);
+    }
+
+    throw error; // Let pg-boss handle retry
+  }
+}
+
 async function updateCampaignProgress(campaignId: string) {
-  const stats = await prisma.job.groupBy({
-    by: ['status'],
-    where: { campaignId },
-    _count: { status: true },
-  })
+  const supabase = getSupabase();
 
-  const totalJobs = stats.reduce((sum, stat) => sum + stat._count.status, 0)
-  const completedJobs = stats.find((s) => s.status === 'SENT')?._count.status || 0
-  const failedJobs = stats.find((s) => s.status === 'FAILED')?._count.status || 0
+  // Get job counts by status
+  const { data: jobs } = await supabase
+    .from('jobs')
+    .select('status')
+    .eq('campaign_id', campaignId);
 
-  const progress = Math.floor(((completedJobs + failedJobs) / totalJobs) * 100)
+  if (!jobs) return;
 
-  await prisma.campaign.update({
-    where: { id: campaignId },
-    data: {
+  const total = jobs.length;
+  const sent = jobs.filter(j => j.status === 'SENT').length;
+  const failed = jobs.filter(j => j.status === 'FAILED').length;
+  const progress = Math.floor(((sent + failed) / total) * 100);
+
+  await supabase
+    .from('campaigns')
+    .update({
       progress,
-      // Если все джобы завершены, обновляем статус кампании
       ...(progress === 100 && {
         status: 'COMPLETED',
-        completedAt: new Date(),
-      }),
-    },
-  })
+        completed_at: new Date().toISOString()
+      })
+    })
+    .eq('id', campaignId);
 }

@@ -1,168 +1,175 @@
-// backend/src/api/templates.ts
-import { Router } from 'express'
-import prisma from '../lib/prisma'
-import { validate } from '../middleware/validate'
+// backend/src/api/templates.ts - MIGRATED TO SUPABASE
+import { Router } from 'express';
+import { getSupabase } from '../lib/supabase';
+import { validate } from '../middleware/validate';
 import {
   createTemplateSchema,
   updateTemplateSchema,
   templateQuerySchema,
-} from '../../../shared/src/schemas/template'
+} from '../../../shared/src/schemas/template';
 
-const router = Router()
+const router = Router();
 
-// GET /api/templates - !?8A>: 2A5E H01;>=>2 A D8;LB@0<8
+// GET /api/templates - Список всех шаблонов с фильтрами
 router.get('/', validate(templateQuerySchema, 'query'), async (req, res, next) => {
   try {
-    const { search, mediaType, page, limit, sortBy, sortOrder } = req.query as any
+    const { search, mediaType, page = 1, limit = 20, sortBy = 'created_at', sortOrder = 'desc' } = req.query as any;
+    const supabase = getSupabase();
 
-    const where: any = {}
+    let query = supabase
+      .from('templates')
+      .select('*', { count: 'exact' });
 
     if (search) {
-      where.OR = [{ name: { contains: search } }, { content: { contains: search } }]
+      query = query.or(`name.ilike.%${search}%,content.ilike.%${search}%`);
     }
 
     if (mediaType) {
-      where.mediaType = mediaType
+      query = query.eq('media_type', mediaType);
     }
 
-    const [templates, total] = await Promise.all([
-      prisma.template.findMany({
-        where,
-        select: {
-          id: true,
-          name: true,
-          content: true,
-          description: true,
-          mediaType: true,
-          mediaUrl: true,
-          usageCount: true,
-          createdAt: true,
-          updatedAt: true,
-          _count: {
-            select: {
-              campaigns: true,
-            },
-          },
-        },
-        orderBy: { [sortBy || 'createdAt']: sortOrder || 'desc' },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      prisma.template.count({ where }),
-    ])
+    query = query
+      .order(sortBy, { ascending: sortOrder === 'asc' })
+      .range((page - 1) * limit, page * limit - 1);
+
+    const { data: templates, error, count } = await query;
+
+    if (error) throw error;
 
     res.json({
       data: templates,
       pagination: {
         page,
         limit,
-        total,
-        pages: Math.ceil(total / limit),
+        total: count || 0,
+        pages: Math.ceil((count || 0) / limit),
       },
-    })
+    });
   } catch (error) {
-    next(error)
+    next(error);
   }
-})
+});
 
-// GET /api/templates/:id - >;CG8BL >48= H01;>=
+// GET /api/templates/:id - Получить один шаблон
 router.get('/:id', async (req, res, next) => {
   try {
-    const template = await prisma.template.findUnique({
-      where: { id: req.params.id },
-      include: {
-        campaigns: {
-          select: {
-            id: true,
-            name: true,
-            status: true,
-            createdAt: true,
-          },
-          take: 10,
-          orderBy: {
-            createdAt: 'desc',
-          },
-        },
-      },
-    })
+    const supabase = getSupabase();
+
+    // Get template with related campaigns
+    const { data: template, error } = await supabase
+      .from('templates')
+      .select(`
+        *,
+        campaigns:campaigns(id, name, status, created_at)
+      `)
+      .eq('id', req.params.id)
+      .single();
+
+    if (error) throw error;
 
     if (!template) {
-      return res.status(404).json({ error: '(01;>= =5 =0945=' })
+      return res.status(404).json({ error: 'Шаблон не найден' });
     }
 
-    res.json(template)
-  } catch (error) {
-    next(error)
-  }
-})
+    // Limit campaigns to 10 most recent
+    if (template.campaigns && template.campaigns.length > 10) {
+      template.campaigns = template.campaigns
+        .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, 10);
+    }
 
-// POST /api/templates - !>740BL =>2K9 H01;>=
+    res.json(template);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/templates - Создать новый шаблон
 router.post('/', validate(createTemplateSchema, 'body'), async (req, res, next) => {
   try {
-    const { name, content, description, mediaType, mediaUrl } = req.body
+    const { name, content, description, mediaType, mediaUrl } = req.body;
+    const supabase = getSupabase();
 
-    const template = await prisma.template.create({
-      data: {
+    const { data: template, error } = await supabase
+      .from('templates')
+      .insert({
         name,
         content,
         description,
-        mediaType: mediaType || null,
-        mediaUrl: mediaUrl || null,
-      },
-    })
+        media_type: mediaType || null,
+        media_url: mediaUrl || null,
+        usage_count: 0,
+      })
+      .select()
+      .single();
 
-    res.status(201).json(template)
+    if (error) throw error;
+
+    res.status(201).json(template);
   } catch (error) {
-    next(error)
+    next(error);
   }
-})
+});
 
-// PATCH /api/templates/:id - 1=>28BL H01;>=
+// PATCH /api/templates/:id - Обновить шаблон
 router.patch('/:id', validate(updateTemplateSchema, 'body'), async (req, res, next) => {
   try {
-    const { name, content, description, mediaType, mediaUrl } = req.body
+    const { name, content, description, mediaType, mediaUrl } = req.body;
+    const supabase = getSupabase();
 
-    const updateData: any = {}
-    if (name !== undefined) updateData.name = name
-    if (content !== undefined) updateData.content = content
-    if (description !== undefined) updateData.description = description
-    if (mediaType !== undefined) updateData.mediaType = mediaType
-    if (mediaUrl !== undefined) updateData.mediaUrl = mediaUrl
+    const updateData: any = { updated_at: new Date().toISOString() };
+    if (name !== undefined) updateData.name = name;
+    if (content !== undefined) updateData.content = content;
+    if (description !== undefined) updateData.description = description;
+    if (mediaType !== undefined) updateData.media_type = mediaType;
+    if (mediaUrl !== undefined) updateData.media_url = mediaUrl;
 
-    const template = await prisma.template.update({
-      where: { id: req.params.id },
-      data: updateData,
-    })
+    const { data: template, error } = await supabase
+      .from('templates')
+      .update(updateData)
+      .eq('id', req.params.id)
+      .select()
+      .single();
 
-    res.json(template)
+    if (error) throw error;
+
+    res.json(template);
   } catch (error) {
-    next(error)
+    next(error);
   }
-})
+});
 
-// DELETE /api/templates/:id - #40;8BL H01;>=
+// DELETE /api/templates/:id - Удалить шаблон
 router.delete('/:id', async (req, res, next) => {
   try {
-    // @>25@O5<, 8A?>;L7C5BAO ;8 H01;>= 2 :0<?0=8OE
-    const campaignCount = await prisma.campaign.count({
-      where: { templateId: req.params.id },
-    })
+    const supabase = getSupabase();
 
-    if (campaignCount > 0) {
+    // Проверяем, используется ли шаблон в кампаниях
+    const { count: campaignCount, error: countError } = await supabase
+      .from('campaigns')
+      .select('*', { count: 'exact', head: true })
+      .eq('template_id', req.params.id);
+
+    if (countError) throw countError;
+
+    if (campaignCount && campaignCount > 0) {
       return res.status(400).json({
-        error: '52>7<>6=> C40;8BL H01;>=',
-        message: `(01;>= 8A?>;L7C5BAO 2 ${campaignCount} :0<?0=8OE`,
-      })
+        error: 'Невозможно удалить шаблон',
+        message: `Шаблон используется в ${campaignCount} кампаниях`,
+      });
     }
 
-    await prisma.template.delete({
-      where: { id: req.params.id },
-    })
+    const { error } = await supabase
+      .from('templates')
+      .delete()
+      .eq('id', req.params.id);
 
-    res.status(204).send()
+    if (error) throw error;
+
+    res.status(204).send();
   } catch (error) {
-    next(error)
+    next(error);
   }
-})
+});
 
-export default router
+export default router;

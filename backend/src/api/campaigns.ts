@@ -1,411 +1,360 @@
-﻿// backend/src/api/campaigns.ts
-import { Router } from 'express'
-import prisma from '../lib/prisma'
-import { validate } from '../middleware/validate'
-import { auditLoggerMiddleware } from '../middleware/audit-logger'
+// backend/src/api/campaigns.ts
+import { Router } from 'express';
+import { getSupabase } from '../lib/supabase';
+import { getPgBoss } from '../queues/pg-boss-queue';
+import { QUEUE_NAMES } from '../types/queue-jobs';
+import { getCampaignWithRelations, getCampaignStats, createJobsForCampaign } from '../lib/supabase-helpers';
+import { validate } from '../middleware/validate';
+import { auditLoggerMiddleware } from '../middleware/audit-logger';
 import {
   createCampaignSchema,
   updateCampaignSchema,
   campaignQuerySchema,
   campaignActionSchema,
-} from '../../../shared/src/schemas/campaign'
-import { startCampaign, pauseCampaign, cancelCampaign } from '../queues/campaign-queue'
+} from '../../../shared/src/schemas/campaign';
 
-const router = Router()
+const router = Router();
 
-// GET /api/campaigns - !?8A>: 2A5E :0<?0=89 A D8;LB@0<8
+// GET /api/campaigns - Список всех кампаний с фильтрами
 router.get('/', validate(campaignQuerySchema, 'query'), async (req, res, next) => {
   try {
-    const { status, mode, batchId, createdById, search, page, limit, sortBy, sortOrder } =
-      req.query as any
+    const { status, mode, batchId, search, page = 1, limit = 20, sortBy = 'created_at', sortOrder = 'desc' } = req.query as any;
+    const supabase = getSupabase();
 
-    const where: any = {}
+    let query = supabase
+      .from('campaigns')
+      .select(`
+        *,
+        batch:batches(id, name, channel_count),
+        template:templates(id, name),
+        created_by:users!campaigns_created_by_id_fkey(id, username)
+      `, { count: 'exact' });
 
-    if (status) where.status = status
-    if (mode) where.mode = mode
-    if (batchId) where.batchId = batchId
-    if (createdById) where.createdById = createdById
+    // Фильтры
+    if (status) query = query.eq('status', status);
+    if (mode) query = query.eq('mode', mode);
+    if (batchId) query = query.eq('batch_id', batchId);
+    if (search) query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%`);
 
-    if (search) {
-      where.OR = [{ name: { contains: search } }, { description: { contains: search } }]
-    }
+    // Сортировка и пагинация
+    query = query
+      .order(sortBy, { ascending: sortOrder === 'asc' })
+      .range((page - 1) * limit, page * limit - 1);
 
-    const [campaigns, total] = await Promise.all([
-      prisma.campaign.findMany({
-        where,
-        include: {
-          batch: {
-            select: {
-              id: true,
-              name: true,
-              channelCount: true,
-            },
-          },
-          template: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-          createdBy: {
-            select: {
-              id: true,
-              username: true,
-            },
-          },
-          _count: {
-            select: {
-              jobs: true,
-            },
-          },
-        },
-        orderBy: { [sortBy || 'createdAt']: sortOrder || 'desc' },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      prisma.campaign.count({ where }),
-    ])
+    const { data: campaigns, error, count } = await query;
+
+    if (error) throw error;
 
     res.json({
       data: campaigns,
       pagination: {
         page,
         limit,
-        total,
-        pages: Math.ceil(total / limit),
+        total: count || 0,
+        pages: Math.ceil((count || 0) / limit),
       },
-    })
+    });
   } catch (error) {
-    next(error)
+    next(error);
   }
-})
+});
 
-// GET /api/campaigns/:id - >;CG8BL >4=C :0<?0=8N
+// GET /api/campaigns/:id - Получить одну кампанию
 router.get('/:id', async (req, res, next) => {
   try {
-    const campaign = await prisma.campaign.findUnique({
-      where: { id: req.params.id },
-      include: {
-        batch: {
-          include: {
-            channels: {
-              select: {
-                id: true,
-                username: true,
-                category: true,
-                isActive: true,
-              },
-            },
-          },
-        },
-        template: true,
-        createdBy: {
-          select: {
-            id: true,
-            username: true,
-            role: true,
-          },
-        },
-        jobs: {
-          select: {
-            id: true,
-            channelId: true,
-            status: true,
-            attempts: true,
-            errorMessage: true,
-            createdAt: true,
-            sentAt: true,
-          },
-          orderBy: {
-            createdAt: 'desc',
-          },
-        },
-      },
-    })
+    const { data: campaign, error } = await getCampaignWithRelations(req.params.id);
 
+    if (error) throw error;
     if (!campaign) {
-      return res.status(404).json({ error: '0<?0=8O =5 =0945=0' })
+      return res.status(404).json({ error: 'Кампания не найдена' });
     }
 
-    res.json(campaign)
+    res.json(campaign);
   } catch (error) {
-    next(error)
+    next(error);
   }
-})
+});
 
-// GET /api/campaigns/:id/stats - >;CG8BL AB0B8AB8:C :0<?0=88
+// GET /api/campaigns/:id/stats - Получить статистику кампании
 router.get('/:id/stats', async (req, res, next) => {
   try {
-    const stats = await prisma.job.groupBy({
-      by: ['status'],
-      where: {
-        campaignId: req.params.id,
-      },
-      _count: {
-        status: true,
-      },
-    })
-
-    const statsMap = stats.reduce(
-      (acc, stat) => {
-        acc[stat.status.toLowerCase()] = stat._count.status
-        return acc
-      },
-      { queued: 0, sending: 0, sent: 0, failed: 0 }
-    )
-
-    res.json(statsMap)
+    const stats = await getCampaignStats(req.params.id);
+    res.json(stats);
   } catch (error) {
-    next(error)
+    next(error);
   }
-})
+});
 
-// POST /api/campaigns - !>740BL =>2CN :0<?0=8N
+// POST /api/campaigns - Создать новую кампанию
 router.post(
   '/',
   validate(createCampaignSchema, 'body'),
   auditLoggerMiddleware('CAMPAIGN_CREATED', 'Campaign'),
   async (req, res, next) => {
     try {
-      const { name, description, batchId, templateId, params, mode, deliveryRate, retryLimit } =
-        req.body
+      const { name, description, batchId, templateId, params, mode, deliveryRate, retryLimit } = req.body;
+      const supabase = getSupabase();
+
       // Get user ID from auth or use first available user
-      let userId = (req as any).user?.id
+      let userId = (req as any).user?.id;
       if (!userId) {
-        const firstUser = await prisma.user.findFirst()
+        const { data: firstUser } = await supabase.from('users').select('id').limit(1).single();
         if (!firstUser) {
-          return res.status(400).json({ error: 'No users found in database' })
+          return res.status(400).json({ error: 'No users found in database' });
         }
-        userId = firstUser.id
+        userId = firstUser.id;
       }
 
-      // >;CG05< :>;8G5AB2> :0=0;>2 2 10BG5
-      const batch = await prisma.batch.findUnique({
-        where: { id: batchId },
-        include: {
-          channels: {
-            where: { isActive: true },
-          },
-        },
-      })
+      // Получаем количество активных каналов в батче
+      const { data: batchChannels, error: batchError } = await supabase
+        .from('batch_channels')
+        .select('channel:channels!inner(id, is_active)')
+        .eq('batch_id', batchId)
+        .eq('channels.is_active', true);
 
-      if (!batch) {
-        return res.status(404).json({ error: 'Batch not found' })
+      if (batchError) throw batchError;
+
+      const activeChannelCount = batchChannels?.length || 0;
+
+      if (activeChannelCount === 0) {
+        return res.status(400).json({ error: 'No active channels in batch' });
       }
 
-      const activeChannels = batch.channels
-
-      // !>7405< :0<?0=8N
-      const campaign = await prisma.campaign.create({
-        data: {
+      // Создаем кампанию
+      const { data: campaign, error: createError } = await supabase
+        .from('campaigns')
+        .insert({
           name,
           description,
-          batchId,
-          templateId,
+          batch_id: batchId,
+          template_id: templateId,
           params,
           mode,
-          deliveryRate,
-          retryLimit,
+          delivery_rate: deliveryRate,
+          retry_limit: retryLimit,
           status: 'QUEUED',
           progress: 0,
-          totalJobs: activeChannels.length,
-          createdById: userId,
-        },
-        include: {
-          batch: true,
-          template: true,
-        },
-      })
+          total_jobs: activeChannelCount,
+          created_by_id: userId,
+        })
+        .select(`
+          *,
+          batch:batches(*),
+          template:templates(*)
+        `)
+        .single();
 
-      // !>7405< jobs 4;O :064>3> 0:B82=>3> :0=0;0
-      await prisma.job.createMany({
-        data: activeChannels.map((channel) => ({
-          campaignId: campaign.id,
-          channelId: channel.id,
-          status: 'QUEUED',
-        })),
-      })
+      if (createError) throw createError;
 
-      res.status(201).json(campaign)
+      // Создаем jobs для всех активных каналов
+      const jobsCreated = await createJobsForCampaign(campaign.id, batchId);
+
+      console.log(`✅ Campaign ${campaign.id} created with ${jobsCreated} jobs`);
+
+      res.status(201).json(campaign);
     } catch (error) {
-      next(error)
+      next(error);
     }
   }
-)
+);
 
-// PATCH /api/campaigns/:id - 1=>28BL :0<?0=8N
+// PATCH /api/campaigns/:id - Обновить кампанию
 router.patch(
   '/:id',
   validate(updateCampaignSchema, 'body'),
-  auditLoggerMiddleware('CAMPAIGN_STARTED', 'Campaign'),
   async (req, res, next) => {
     try {
-      const { name, description, params, mode, deliveryRate, retryLimit } = req.body
+      const { name, description, params, mode, deliveryRate, retryLimit } = req.body;
+      const supabase = getSupabase();
 
-      // @>25@O5<, GB> :0<?0=8O 5I5 =5 70?CI5=0
-      const existing = await prisma.campaign.findUnique({
-        where: { id: req.params.id },
-      })
+      // Проверяем, что кампания еще не запущена
+      const { data: existing, error: fetchError } = await supabase
+        .from('campaigns')
+        .select('status')
+        .eq('id', req.params.id)
+        .single();
 
+      if (fetchError) throw fetchError;
       if (!existing) {
-        return res.status(404).json({ error: '0<?0=8O =5 =0945=0' })
+        return res.status(404).json({ error: 'Кампания не найдена' });
       }
 
       if (existing.status !== 'QUEUED' && existing.status !== 'PAUSED') {
         return res.status(400).json({
-          error: '52>7<>6=> 87<5=8BL :0<?0=8N',
-          message: '>6=> @540:B8@>20BL B>;L:> :0<?0=88 2 AB0BCA5 QUEUED 8;8 PAUSED',
-        })
+          error: 'Невозможно изменить кампанию',
+          message: 'Можно редактировать только кампании в статусе QUEUED или PAUSED',
+        });
       }
 
-      const updateData: any = {}
-      if (name !== undefined) updateData.name = name
-      if (description !== undefined) updateData.description = description
-      if (params !== undefined) updateData.params = params
-      if (mode !== undefined) updateData.mode = mode
-      if (deliveryRate !== undefined) updateData.deliveryRate = deliveryRate
-      if (retryLimit !== undefined) updateData.retryLimit = retryLimit
+      const updateData: any = { updated_at: new Date().toISOString() };
+      if (name !== undefined) updateData.name = name;
+      if (description !== undefined) updateData.description = description;
+      if (params !== undefined) updateData.params = params;
+      if (mode !== undefined) updateData.mode = mode;
+      if (deliveryRate !== undefined) updateData.delivery_rate = deliveryRate;
+      if (retryLimit !== undefined) updateData.retry_limit = retryLimit;
 
-      const campaign = await prisma.campaign.update({
-        where: { id: req.params.id },
-        data: updateData,
-      })
+      const { data: campaign, error: updateError } = await supabase
+        .from('campaigns')
+        .update(updateData)
+        .eq('id', req.params.id)
+        .select()
+        .single();
 
-      res.json(campaign)
+      if (updateError) throw updateError;
+
+      res.json(campaign);
     } catch (error) {
-      next(error)
+      next(error);
     }
   }
-)
+);
 
-// POST /api/campaigns/:id/action - #?@02;5=85 AB0BCA>< :0<?0=88 (start, pause, resume, cancel)
+// POST /api/campaigns/:id/action - Управление статусом кампании (start, pause, resume, cancel)
 router.post(
   '/:id/action',
   validate(campaignActionSchema, 'body'),
   async (req, res, next) => {
     try {
-      const { action } = req.body
-      const campaignId = req.params.id
+      const { action } = req.body;
+      const campaignId = req.params.id;
+      const supabase = getSupabase();
 
-      const campaign = await prisma.campaign.findUnique({
-        where: { id: campaignId },
-      })
+      const { data: campaign, error: fetchError } = await supabase
+        .from('campaigns')
+        .select('status')
+        .eq('id', campaignId)
+        .single();
 
+      if (fetchError) throw fetchError;
       if (!campaign) {
-        return res.status(404).json({ error: '0<?0=8O =5 =0945=0' })
+        return res.status(404).json({ error: 'Кампания не найдена' });
       }
 
-      let newStatus: string
-      let auditAction: string
+      let newStatus: string;
+      let auditAction: string;
+      const updateData: any = { updated_at: new Date().toISOString() };
 
       switch (action) {
         case 'start':
           if (campaign.status !== 'QUEUED') {
-            return res.status(400).json({ error: '>6=> 70?CAB8BL B>;L:> :0<?0=8N 2 AB0BCA5 QUEUED' })
+            return res.status(400).json({ error: 'Можно запустить только кампанию в статусе QUEUED' });
           }
-          newStatus = 'RUNNING'
-          auditAction = 'CAMPAIGN_STARTED'
-          break
+          newStatus = 'RUNNING';
+          auditAction = 'CAMPAIGN_STARTED';
+          updateData.started_at = new Date().toISOString();
+          break;
 
         case 'pause':
           if (campaign.status !== 'RUNNING') {
-            return res.status(400).json({ error: '>6=> ?@8>AB0=>28BL B>;L:> 70?CI5==CN :0<?0=8N' })
+            return res.status(400).json({ error: 'Можно приостановить только запущенную кампанию' });
           }
-          newStatus = 'PAUSED'
-          auditAction = 'CAMPAIGN_PAUSED'
-          break
+          newStatus = 'PAUSED';
+          auditAction = 'CAMPAIGN_PAUSED';
+          break;
 
         case 'resume':
           if (campaign.status !== 'PAUSED') {
-            return res.status(400).json({ error: '>6=> 2>7>1=>28BL B>;L:> ?@8>AB0=>2;5==CN :0<?0=8N' })
+            return res.status(400).json({ error: 'Можно возобновить только приостановленную кампанию' });
           }
-          newStatus = 'RUNNING'
-          auditAction = 'CAMPAIGN_RESUMED'
-          break
+          newStatus = 'RUNNING';
+          auditAction = 'CAMPAIGN_RESUMED';
+          break;
 
         case 'cancel':
           if (campaign.status === 'COMPLETED' || campaign.status === 'CANCELLED') {
-            return res.status(400).json({ error: '52>7<>6=> >B<5=8BL 7025@H5==CN :0<?0=8N' })
+            return res.status(400).json({ error: 'Невозможно отменить завершенную кампанию' });
           }
-          newStatus = 'CANCELLED'
-          auditAction = 'CAMPAIGN_CANCELLED'
-          break
+          newStatus = 'CANCELLED';
+          auditAction = 'CAMPAIGN_CANCELLED';
+          updateData.completed_at = new Date().toISOString();
+          break;
 
         default:
-          return res.status(400).json({ error: 'Unknown action' })
+          return res.status(400).json({ error: 'Unknown action' });
       }
 
-      const updated = await prisma.campaign.update({
-        where: { id: campaignId },
-        data: {
-          status: newStatus as any,
-          startedAt: action === 'start' ? new Date() : campaign.startedAt,
-          completedAt: action === 'cancel' ? new Date() : campaign.completedAt,
-        },
-      })
+      updateData.status = newStatus;
 
-      // Respond immediately, queue operations are async (fire-and-forget)
-      res.json(updated)
+      const { data: updated, error: updateError } = await supabase
+        .from('campaigns')
+        .update(updateData)
+        .eq('id', campaignId)
+        .select()
+        .single();
+
+      if (updateError) throw updateError;
+
+      // Respond immediately
+      res.json(updated);
 
       // Queue integration (non-blocking)
       setImmediate(async () => {
         try {
           if (action === 'start') {
-            // Add campaign to queue for processing
-            await startCampaign(campaignId, (req as any).user?.id)
-            console.log(`✅ Campaign ${campaignId} added to queue`)
-          } else if (action === 'pause') {
-            // Pause campaign processing
-            await pauseCampaign(campaignId)
-            console.log(`⏸️  Campaign ${campaignId} paused`)
-          } else if (action === 'cancel') {
-            // Cancel all campaign jobs
-            await cancelCampaign(campaignId)
-            console.log(`❌ Campaign ${campaignId} cancelled`)
+            const boss = await getPgBoss();
+            await boss.send(
+              QUEUE_NAMES.START_CAMPAIGN,
+              {
+                campaignId,
+                userId: (req as any).user?.id
+              },
+              {
+                singletonKey: campaignId
+              }
+            );
+            console.log(`✅ Campaign ${campaignId} added to pg-boss queue`);
           }
+          // TODO: Implement pause/cancel logic
         } catch (queueError) {
-          console.error('Queue operation error:', queueError)
-          // TODO: Rollback status if queue fails
+          console.error('Queue operation error:', queueError);
         }
-      })
+      });
     } catch (error) {
-      next(error)
+      next(error);
     }
   }
-)
+);
 
-// DELETE /api/campaigns/:id - #40;8BL :0<?0=8N
+// DELETE /api/campaigns/:id - Удалить кампанию
 router.delete(
   '/:id',
   auditLoggerMiddleware('CAMPAIGN_CANCELLED', 'Campaign'),
   async (req, res, next) => {
     try {
-      const campaign = await prisma.campaign.findUnique({
-        where: { id: req.params.id },
-      })
+      const supabase = getSupabase();
 
+      const { data: campaign, error: fetchError } = await supabase
+        .from('campaigns')
+        .select('status')
+        .eq('id', req.params.id)
+        .single();
+
+      if (fetchError) throw fetchError;
       if (!campaign) {
-        return res.status(404).json({ error: '0<?0=8O =5 =0945=0' })
+        return res.status(404).json({ error: 'Кампания не найдена' });
       }
 
       if (campaign.status === 'RUNNING') {
         return res.status(400).json({
-          error: '52>7<>6=> C40;8BL :0<?0=8N',
-          message: '!=0G0;0 >AB0=>28B5 70?CI5==CN :0<?0=8N',
-        })
+          error: 'Невозможно удалить кампанию',
+          message: 'Сначала остановите запущенную кампанию',
+        });
       }
 
-      // Jobs 1C4CB C40;5=K 02B><0B8G5A:8 1;03>40@O onDelete: Cascade
-      await prisma.campaign.delete({
-        where: { id: req.params.id },
-      })
+      // Jobs будут удалены автоматически благодаря onDelete: Cascade
+      const { error: deleteError } = await supabase
+        .from('campaigns')
+        .delete()
+        .eq('id', req.params.id);
 
-      res.status(204).send()
+      if (deleteError) throw deleteError;
+
+      res.status(204).send();
     } catch (error) {
-      next(error)
+      next(error);
     }
   }
-)
+);
 
-export default router
-
+export default router;

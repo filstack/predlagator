@@ -46,7 +46,13 @@
       "mcp__context7__get-library-docs",
       "Read(//d/00_dev/electra/electra_dashboard/**)",
       "Bash(git commit -m \"$(cat <<''EOF''\nfeat: миграция базы данных на Supabase\n\n- Установлен @supabase/supabase-js SDK\n- Создан Supabase клиент с lazy initialization\n- Добавлена SQL миграция для всех таблиц (users, channels, batches, templates, campaigns, jobs, audit_logs)\n- Обновлены переменные окружения для Supabase\n- Создан тест подключения к базе данных\n- Добавлена документация по миграции\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nfeat: миграция базы данных на Supabase\n\n- Установлен @supabase/supabase-js SDK\n- Создан Supabase клиент с lazy initialization\n- Добавлена SQL миграция для всех таблиц (users, channels, batches, templates, campaigns, jobs, audit_logs)\n- Обновлены переменные окружения для Supabase\n- Создан тест подключения к базе данных\n- Добавлена документация по миграции (SUPABASE_FINAL_MIGRATION.md)\n- Подключение к Supabase успешно протестировано\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(set FEATURE_NUM=\"002\")",
+      "Bash(set BRANCH_NAME=\"002-migrate-from-bullmq\")",
+      "Bash(set FEATURE_DIR=\"specs/%BRANCH_NAME%\")",
+      "Bash(Copy-Item \"D:\\00_dev\\01_Ведомості\\Новая папка\\бот_рассылка\\backend\\src\\api\\campaigns.ts\" -Destination \"D:\\00_dev\\01_Ведомости\\Новая папка\\бот_рассылка\\backend\\src\\api\\campaigns.ts\" -Force)",
+      "Bash(set NODE_TLS_REJECT_UNAUTHORIZED=0)"
     ],
     "deny": [],
     "ask": []

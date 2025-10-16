@@ -4,7 +4,7 @@ import channelsRouter from './channels'
 import batchesRouter from './batches'
 import templatesRouter from './templates'
 import campaignsRouter from './campaigns'
-import rateLimitsRouter from './rate-limits'
+// import rateLimitsRouter from './rate-limits' // TODO: Migrate to pg-boss rate limiting
 import testRouter from './test'
 import authTelegramRouter from './auth-telegram'
 
@@ -33,7 +33,7 @@ router.use('/channels', channelsRouter)
 router.use('/batches', batchesRouter)
 router.use('/templates', templatesRouter)
 router.use('/campaigns', campaignsRouter)
-router.use('/rate-limits', rateLimitsRouter)
+// router.use('/rate-limits', rateLimitsRouter) // TODO: Migrate to pg-boss
 router.use('/test', testRouter)
 router.use('/auth-telegram', authTelegramRouter)
 

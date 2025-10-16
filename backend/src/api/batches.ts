@@ -1,229 +1,231 @@
-﻿// backend/src/api/batches.ts
-import { Router } from 'express'
-import prisma from '../lib/prisma'
-import { validate } from '../middleware/validate'
-import { auditLoggerMiddleware } from '../middleware/audit-logger'
+// backend/src/api/batches.ts
+import { Router } from 'express';
+import { getSupabase } from '../lib/supabase';
+import { validate } from '../middleware/validate';
+import { auditLoggerMiddleware } from '../middleware/audit-logger';
 import {
   createBatchSchema,
   updateBatchSchema,
   batchQuerySchema,
-} from '../../../shared/src/schemas/batch'
+} from '../../../shared/src/schemas/batch';
 
-const router = Router()
+const router = Router();
 
-// GET /api/batches - !?8A>: 2A5E 10BG59 A D8;LB@0<8
+// GET /api/batches - Список всех батчей с фильтрами
 router.get('/', validate(batchQuerySchema, 'query'), async (req, res, next) => {
   try {
-    const { search, createdById, page, limit, sortBy, sortOrder } = req.query as any
+    const { search, page = 1, limit = 20, sortBy = 'created_at', sortOrder = 'desc' } = req.query as any;
+    const supabase = getSupabase();
 
-    const where: any = {}
+    let query = supabase
+      .from('batches')
+      .select(`
+        *,
+        created_by:users!batches_created_by_id_fkey(id, username, role)
+      `, { count: 'exact' });
 
     if (search) {
-      where.OR = [
-        { name: { contains: search } },
-        { description: { contains: search } },
-      ]
+      query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%`);
     }
 
-    if (createdById) {
-      where.createdById = createdById
-    }
+    query = query
+      .order(sortBy, { ascending: sortOrder === 'asc' })
+      .range((page - 1) * limit, page * limit - 1);
 
-    const [batches, total] = await Promise.all([
-      prisma.batch.findMany({
-        where,
-        include: {
-          createdBy: {
-            select: {
-              id: true,
-              username: true,
-              role: true,
-            },
-          },
-          _count: {
-            select: {
-              channels: true,
-              campaigns: true,
-            },
-          },
-        },
-        orderBy: { [sortBy || 'createdAt']: sortOrder || 'desc' },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      prisma.batch.count({ where }),
-    ])
+    const { data: batches, error, count } = await query;
+
+    if (error) throw error;
 
     res.json({
       data: batches,
       pagination: {
         page,
         limit,
-        total,
-        pages: Math.ceil(total / limit),
+        total: count || 0,
+        pages: Math.ceil((count || 0) / limit),
       },
-    })
+    });
   } catch (error) {
-    next(error)
+    next(error);
   }
-})
+});
 
-// GET /api/batches/:id - >;CG8BL >48= 10BG
+// GET /api/batches/:id - Получить один батч
 router.get('/:id', async (req, res, next) => {
   try {
-    const batch = await prisma.batch.findUnique({
-      where: { id: req.params.id },
-      include: {
-        createdBy: {
-          select: {
-            id: true,
-            username: true,
-            role: true,
-          },
-        },
-        channels: {
-          select: {
-            id: true,
-            username: true,
-            category: true,
-            title: true,
-            memberCount: true,
-            isActive: true,
-          },
-        },
-        campaigns: {
-          select: {
-            id: true,
-            name: true,
-            status: true,
-            progress: true,
-            createdAt: true,
-          },
-        },
-      },
-    })
+    const supabase = getSupabase();
 
+    const { data: batch, error } = await supabase
+      .from('batches')
+      .select(`
+        *,
+        created_by:users!batches_created_by_id_fkey(id, username, role),
+        channels:batch_channels(
+          channel:channels(id, username, category, title, member_count, is_active)
+        )
+      `)
+      .eq('id', req.params.id)
+      .single();
+
+    if (error) throw error;
     if (!batch) {
-      return res.status(404).json({ error: 'Batch not found' })
+      return res.status(404).json({ error: 'Batch not found' });
     }
 
-    res.json(batch)
-  } catch (error) {
-    next(error)
-  }
-})
+    // Преобразуем структуру для обратной совместимости
+    const formattedBatch = {
+      ...batch,
+      channels: batch.channels?.map((bc: any) => bc.channel) || []
+    };
 
-// POST /api/batches - !>740BL =>2K9 10BG
+    res.json(formattedBatch);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/batches - Создать новый батч
 router.post(
   '/',
   validate(createBatchSchema, 'body'),
   auditLoggerMiddleware('BATCH_CREATED', 'Batch'),
   async (req, res, next) => {
     try {
-      const { name, description, channelIds } = req.body
+      const { name, description, channelIds } = req.body;
+      const supabase = getSupabase();
 
       // Get user ID from auth or use first available user
-      let userId = (req as any).user?.id
+      let userId = (req as any).user?.id;
       if (!userId) {
-        const firstUser = await prisma.user.findFirst()
+        const { data: firstUser } = await supabase.from('users').select('id').limit(1).single();
         if (!firstUser) {
-          return res.status(400).json({ error: 'No users found in database' })
+          return res.status(400).json({ error: 'No users found in database' });
         }
-        userId = firstUser.id
+        userId = firstUser.id;
       }
 
-      const batch = await prisma.batch.create({
-        data: {
+      // Создаем батч
+      const { data: batch, error: createError } = await supabase
+        .from('batches')
+        .insert({
           name,
           description,
-          createdById: userId,
-          channelCount: channelIds?.length || 0,
-          ...(channelIds && channelIds.length > 0
-            ? {
-                channels: {
-                  connect: channelIds.map((id: string) => ({ id })),
-                },
-              }
-            : {}),
-        },
-        include: {
-          createdBy: {
-            select: {
-              id: true,
-              username: true,
-            },
-          },
-          channels: {
-            select: {
-              id: true,
-              username: true,
-            },
-          },
-        },
-      })
+          created_by_id: userId,
+          channel_count: channelIds?.length || 0,
+        })
+        .select(`
+          *,
+          created_by:users!batches_created_by_id_fkey(id, username)
+        `)
+        .single();
 
-      res.status(201).json(batch)
+      if (createError) throw createError;
+
+      // Связываем каналы если они есть
+      if (channelIds && channelIds.length > 0) {
+        const batchChannelsData = channelIds.map((channelId: string) => ({
+          batch_id: batch.id,
+          channel_id: channelId
+        }));
+
+        const { error: linkError } = await supabase
+          .from('batch_channels')
+          .insert(batchChannelsData);
+
+        if (linkError) throw linkError;
+
+        // Получаем связанные каналы
+        const { data: channels } = await supabase
+          .from('batch_channels')
+          .select('channel:channels(id, username)')
+          .eq('batch_id', batch.id);
+
+        batch.channels = channels?.map((bc: any) => bc.channel) || [];
+      }
+
+      res.status(201).json(batch);
     } catch (error) {
-      next(error)
+      next(error);
     }
   }
-)
+);
 
-// PATCH /api/batches/:id - 1=>28BL 10BG
+// PATCH /api/batches/:id - Обновить батч
 router.patch(
   '/:id',
   validate(updateBatchSchema, 'body'),
   auditLoggerMiddleware('BATCH_UPDATED', 'Batch'),
   async (req, res, next) => {
     try {
-      const { name, description, channelIds } = req.body
+      const { name, description, channelIds } = req.body;
+      const supabase = getSupabase();
 
-      // >43>B02;8205< 40==K5 4;O >1=>2;5=8O
-      const updateData: any = {}
-      if (name !== undefined) updateData.name = name
-      if (description !== undefined) updateData.description = description
+      const updateData: any = { updated_at: new Date().toISOString() };
+      if (name !== undefined) updateData.name = name;
+      if (description !== undefined) updateData.description = description;
+      if (channelIds !== undefined) updateData.channel_count = channelIds.length;
 
-      // A;8 >1=>2;ONBAO :0=0;K
+      const { data: batch, error: updateError } = await supabase
+        .from('batches')
+        .update(updateData)
+        .eq('id', req.params.id)
+        .select()
+        .single();
+
+      if (updateError) throw updateError;
+
+      // Если обновляются каналы
       if (channelIds) {
-        updateData.channelCount = channelIds.length
-        updateData.channels = {
-          set: [], // !=0G0;0 >BA>548=O5< 2A5
-          connect: channelIds.map((id: string) => ({ id })),
+        // Удаляем старые связи
+        await supabase
+          .from('batch_channels')
+          .delete()
+          .eq('batch_id', req.params.id);
+
+        // Создаем новые связи
+        if (channelIds.length > 0) {
+          const batchChannelsData = channelIds.map((channelId: string) => ({
+            batch_id: req.params.id,
+            channel_id: channelId
+          }));
+
+          await supabase
+            .from('batch_channels')
+            .insert(batchChannelsData);
         }
+
+        // Получаем обновленные каналы
+        const { data: channels } = await supabase
+          .from('batch_channels')
+          .select('channel:channels(id, username)')
+          .eq('batch_id', req.params.id);
+
+        batch.channels = channels?.map((bc: any) => bc.channel) || [];
       }
 
-      const batch = await prisma.batch.update({
-        where: { id: req.params.id },
-        data: updateData,
-        include: {
-          channels: {
-            select: {
-              id: true,
-              username: true,
-            },
-          },
-        },
-      })
-
-      res.json(batch)
+      res.json(batch);
     } catch (error) {
-      next(error)
+      next(error);
     }
   }
-)
+);
 
-// DELETE /api/batches/:id - #40;8BL 10BG
+// DELETE /api/batches/:id - Удалить батч
 router.delete('/:id', auditLoggerMiddleware('BATCH_DELETED', 'Batch'), async (req, res, next) => {
   try {
-    await prisma.batch.delete({
-      where: { id: req.params.id },
-    })
+    const supabase = getSupabase();
 
-    res.status(204).send()
+    const { error } = await supabase
+      .from('batches')
+      .delete()
+      .eq('id', req.params.id);
+
+    if (error) throw error;
+
+    res.status(204).send();
   } catch (error) {
-    next(error)
+    next(error);
   }
-})
+});
 
-export default router
-
+export default router;

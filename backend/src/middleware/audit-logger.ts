@@ -1,14 +1,13 @@
-// backend/src/middleware/audit-logger.ts
-import { Request, Response, NextFunction } from 'express'
-import { AuditAction, LogSeverity } from '../../../shared/node_modules/@prisma/client'
-import prisma from '../lib/prisma'
+// backend/src/middleware/audit-logger.ts - MIGRATED TO SUPABASE
+import { Request, Response, NextFunction } from 'express';
+import { getSupabase } from '../lib/supabase';
 
 export interface AuditLogOptions {
-  action: AuditAction
-  resourceType?: string
-  resourceId?: string
-  severity?: LogSeverity
-  metadata?: Record<string, any>
+  action: string; // AuditAction type
+  resourceType?: string;
+  resourceId?: string;
+  severity?: 'DEBUG' | 'INFO' | 'WARNING' | 'ERROR' | 'CRITICAL';
+  metadata?: Record<string, any>;
 }
 
 /**
@@ -20,43 +19,45 @@ export async function logAudit(
   ipAddress?: string
 ): Promise<void> {
   try {
-    await prisma.auditLog.create({
-      data: {
-        userId,
+    const supabase = getSupabase();
+
+    await supabase
+      .from('audit_logs')
+      .insert({
+        user_id: userId,
         action: options.action,
-        resourceType: options.resourceType,
-        resourceId: options.resourceId,
+        resource_type: options.resourceType,
+        resource_id: options.resourceId,
         metadata: options.metadata || null,
         severity: options.severity || 'INFO',
-        ipAddress: ipAddress || null,
-      },
-    })
+        ip_address: ipAddress || null,
+      });
   } catch (error) {
-    console.error('Ошибка при создании audit log:', error)
+    console.error('Ошибка при создании audit log:', error);
   }
 }
 
 /**
  * Middleware для автоматического логирования действий
  */
-export function auditLoggerMiddleware(action: AuditAction, resourceType?: string) {
+export function auditLoggerMiddleware(action: string, resourceType?: string) {
   return async (req: Request, res: Response, next: NextFunction) => {
     // Сохраняем оригинальный метод json
-    const originalJson = res.json.bind(res)
+    const originalJson = res.json.bind(res);
 
     // Переопределяем метод json для логирования после успешного ответа
     res.json = function (body: any) {
       // Логируем только успешные операции (2xx статусы)
       if (res.statusCode >= 200 && res.statusCode < 300) {
-        const userId = (req as any).user?.id || null
-        const ipAddress = req.ip || req.socket.remoteAddress
+        const userId = (req as any).user?.id || null;
+        const ipAddress = req.ip || req.socket.remoteAddress;
 
         // Определяем resourceId из ответа или параметров
-        let resourceId: string | undefined
+        let resourceId: string | undefined;
         if (body?.id) {
-          resourceId = body.id
+          resourceId = body.id;
         } else if (req.params?.id) {
-          resourceId = req.params.id
+          resourceId = req.params.id;
         }
 
         // Создаём метаданные
@@ -64,17 +65,17 @@ export function auditLoggerMiddleware(action: AuditAction, resourceType?: string
           method: req.method,
           path: req.path,
           statusCode: res.statusCode,
-        }
+        };
 
         // Добавляем информацию о теле запроса для POST/PUT/PATCH
         if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
-          metadata.body = req.body
+          metadata.body = req.body;
         }
 
         // Определяем severity на основе метода
-        let severity: LogSeverity = 'INFO'
+        let severity: 'INFO' | 'WARNING' = 'INFO';
         if (req.method === 'DELETE') {
-          severity = 'WARNING'
+          severity = 'WARNING';
         }
 
         // Асинхронно логируем (не блокируем ответ)
@@ -84,27 +85,27 @@ export function auditLoggerMiddleware(action: AuditAction, resourceType?: string
           resourceId,
           severity,
           metadata,
-        }, ipAddress).catch(console.error)
+        }, ipAddress).catch(console.error);
       }
 
-      return originalJson(body)
-    }
+      return originalJson(body);
+    };
 
-    next()
-  }
+    next();
+  };
 }
 
 /**
  * Утилита для ручного логирования важных событий
  */
 export async function logSecurityEvent(
-  action: AuditAction,
+  action: string,
   options: {
-    userId?: string
-    resourceType?: string
-    resourceId?: string
-    metadata?: Record<string, any>
-    ipAddress?: string
+    userId?: string;
+    resourceType?: string;
+    resourceId?: string;
+    metadata?: Record<string, any>;
+    ipAddress?: string;
   }
 ): Promise<void> {
   await logAudit(options.userId || null, {
@@ -113,5 +114,5 @@ export async function logSecurityEvent(
     resourceId: options.resourceId,
     severity: 'WARNING',
     metadata: options.metadata,
-  }, options.ipAddress)
+  }, options.ipAddress);
 }
