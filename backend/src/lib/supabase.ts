@@ -57,3 +57,33 @@ export const createAnonClient = () => {
  * Get service client (lazy initialization)
  */
 export const getSupabase = () => createServiceClient();
+
+/**
+ * Creates a user-scoped Supabase client with RLS context.
+ * This client will only see data that belongs to the authenticated user.
+ *
+ * @param accessToken - JWT access token from Supabase Auth
+ * @returns SupabaseClient configured with user's JWT
+ *
+ * @example
+ * // In auth middleware:
+ * const token = req.headers.authorization?.substring(7); // Remove "Bearer "
+ * const userClient = createUserClient(token);
+ * req.supabase = userClient;
+ */
+export const createUserClient = (accessToken: string): SupabaseClient => {
+  const supabaseUrl = process.env.SUPABASE_URL || '';
+  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || '';
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Missing SUPABASE_URL or SUPABASE_ANON_KEY environment variables');
+  }
+
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    global: {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  });
+};

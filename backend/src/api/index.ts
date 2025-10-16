@@ -7,6 +7,7 @@ import campaignsRouter from './campaigns'
 // import rateLimitsRouter from './rate-limits' // TODO: Migrate to pg-boss rate limiting
 import testRouter from './test'
 import authTelegramRouter from './auth-telegram'
+import authRouter from './auth'
 
 const router = Router()
 
@@ -17,6 +18,7 @@ router.get('/', (req, res) => {
     version: '1.0.0',
     endpoints: {
       health: 'GET /health',
+      auth: '/api/auth',
       channels: '/api/channels',
       batches: '/api/batches',
       templates: '/api/templates',
@@ -29,6 +31,7 @@ router.get('/', (req, res) => {
 })
 
 // Mount route modules
+router.use('/auth', authRouter)
 router.use('/channels', channelsRouter)
 router.use('/batches', batchesRouter)
 router.use('/templates', templatesRouter)
@@ -37,8 +40,7 @@ router.use('/campaigns', campaignsRouter)
 router.use('/test', testRouter)
 router.use('/auth-telegram', authTelegramRouter)
 
-// TODO: Add auth routes when authentication is implemented
-// router.use('/auth', authRouter)
+// TODO: Add users routes when needed
 // router.use('/users', usersRouter)
 
 export default router
