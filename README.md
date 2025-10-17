@@ -468,20 +468,6 @@ specs/
 
 MIT License
 
-## 🙏 Благодарности
-
-- **Supabase** - PostgreSQL database + Auth
-- **GramJS** - Telegram MTProto клиент
-- **pg-boss** - PostgreSQL job queue
-- **shadcn/ui** - UI компоненты
-- **React** - UI framework
-
-## 📞 Поддержка
-
-- 🐛 Bug Reports: GitHub Issues
-- 💡 Feature Requests: GitHub Discussions
-- 📧 Email: support@predlagator.app
-
 ---
 
 ⚡ **Predlagator** - Профессиональная платформа для Telegram рассылок с полной мультитенантностью
