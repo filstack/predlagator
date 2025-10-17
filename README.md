@@ -1,83 +1,143 @@
-# Predlagator - Telegram Channel Broadcast Management System
+# Predlagator - Система управления Telegram рассылками
 
-🚀 Профессиональная платформа для управления массовыми рассылками по Telegram каналам с веб-интерфейсом, системой батчей, кампаний и продвинутой аналитикой.
+🚀 Профессиональная платформа для управления массовыми рассылками по Telegram каналам с полной мультитенантностью, персональными Telegram аккаунтами и продвинутой системой очередей.
 
 ## 📋 Описание
 
-**Predlagator** — это комплексная система для управления broadcast-рассылками в Telegram. Платформа предоставляет полный цикл работы: от импорта каталога каналов до запуска, мониторинга и анализа результатов рассылочных кампаний.
-
-Система разработана для операторов рассылок, маркетологов и администраторов, которым необходим профессиональный инструмент для массовой коммуникации через Telegram с соблюдением лимитов API и безопасностью аккаунтов.
+**Predlagator** — комплексная система для управления broadcast-рассылками в Telegram. Каждый пользователь работает со своим Telegram аккаунтом, управляет собственными каналами и кампаниями. Платформа обеспечивает полную изоляцию данных, безопасность и масштабируемость.
 
 ## ✨ Основные возможности
 
+### 🔐 Аутентификация и мультитенантность
+
+- Регистрация и вход через Supabase Auth (email + password)
+- Полная изоляция данных пользователей через Row Level Security (RLS)
+- Персональные Telegram credentials для каждого пользователя (API ID, API Hash, Session String)
+- Поддержка нескольких Telegram аккаунтов на одного пользователя
+- Безопасное хранение credentials с AES-256 шифрованием
+- JWT-токены для всех API запросов
+- Onboarding процесс для настройки Telegram при первом входе
+
+### 📱 Управление Telegram аккаунтами
+
+- Добавление неограниченного количества Telegram аккаунтов
+- Авторизация через SMS код и 2FA
+- Автоматическое сохранение session strings
+- Управление активными/неактивными аккаунтами
+- Отображение информации о подключенных Telegram пользователях
+- Кэширование Telegram клиентов (до 50 подключений, TTL 30 минут)
+- LRU eviction стратегия для оптимизации памяти
+
 ### 🎯 Управление каналами
-- 📊 Каталог Telegram каналов с фильтрацией и поиском
-- 🔍 Проверка доступности каналов (reachable/blocked/deleted)
-- 🏷️ Теги, категории и метаданные каналов
-- 📥 Импорт каналов из CSV/NDJSON
-- 🔗 Интеграция с tg-scrap для автоматического обновления
 
-### 📦 Батчи и кампании
-- ✅ Создание батчей (групп каналов) для рассылок
-- 📋 Управление списками: добавление, удаление, клонирование
-- 📑 Шаблоны аудиторий для переиспользования
-- 🎨 Редактор сообщений с плейсхолдерами `{{username}}`, `{{category}}`
-- 🖼️ Поддержка медиа (URL, загрузка файлов, base64)
-- ⏰ Отложенный запуск кампаний по расписанию
+- Каталог Telegram каналов с фильтрацией и поиском
+- Проверка доступности каналов (active/blocked/deleted)
+- Категоризация и тегирование каналов
+- Импорт каналов из CSV/JSONL файлов
+- Обновление метаданных каналов
+- Изоляция каналов по пользователям (RLS)
 
-### ⚙️ Контроль доставки
-- 🚦 Настройка throttling (msg/sec, задержки)
-- 🔄 Retry политики с exponential backoff
-- 🌐 Поддержка прокси для обхода ограничений
-- 🎲 A/B тестирование вариантов сообщений
-- 🧪 Test mode (отправка себе) и Dry Run (симуляция)
+### 📦 Батчи (группы каналов)
+
+- Создание батчей для группировки целевых каналов
+- Добавление/удаление каналов из батчей
+- Клонирование существующих батчей
+- Управление draft/finalized статусами
+- Экспорт батчей в CSV/JSON
+- Просмотр статистики по батчам
+
+### 📝 Шаблоны сообщений
+
+- Редактор текстовых сообщений с placeholders
+- Поддержка медиа контента (изображения, видео, документы)
+- Загрузка медиа через URL или прямая загрузка файлов
+- Переиспользуемые шаблоны для кампаний
+- Предпросмотр перед отправкой
+- Версионирование шаблонов
+
+### 🚀 Кампании и рассылки
+
+- Создание кампаний на основе батчей и шаблонов
+- Выбор конкретного Telegram аккаунта для отправки
+- Настраиваемый throttling (сообщений в секунду)
+- Retry политики с exponential backoff
+- Test mode (отправка себе для проверки)
+- Dry run (симуляция без отправки)
+- Отложенный запуск по расписанию
+- Pause/Resume кампаний в реальном времени
+
+### ⚙️ Система очередей (pg-boss)
+
+- PostgreSQL-based очереди без зависимости от Redis
+- Dual-queue архитектура: campaign orchestration + message delivery
+- Автоматическое создание jobs для каждого канала в кампании
+- Rate limiting через singleton jobs
+- Retry с экспоненциальной задержкой (5s, 10s, 20s)
+- Автоматическая обработка FLOOD_WAIT ошибок
+- Очистка completed jobs после настраиваемого retention периода
+- Мультитенантная обработка (несколько пользователей параллельно)
 
 ### 📈 Мониторинг и аналитика
-- ⚡ Real-time лог событий (queued → sent → delivered/failed)
-- 📊 Дашборд с метриками: success rate, speed, error breakdown
-- ⏸️ Pause/Resume кампаний на лету
-- 📥 Экспорт отчетов в CSV/JSON
-- 🛡️ Auto-pause при превышении FLOOD_WAIT порога
 
-### 🔐 Безопасность и контроль
-- 👥 Role-based access control (Admin/Operator/Auditor)
-- 🔒 Шифрование Telegram session strings (AES-256)
-- 📝 Audit trail всех действий пользователей
-- 🚫 Opt-out список каналов с предотвращением рассылки
-- ⚠️ Автоматическая оценка рисков (Low/Medium/High)
+- Real-time отслеживание статуса кампаний (queued → sending → sent/failed)
+- Детальная статистика: success rate, delivery speed, error breakdown
+- Логи всех job transitions с timestamps
+- Метрики по каждому каналу (успешная доставка, ошибки, retry attempts)
+- Dashboard с визуализацией прогресса кампаний
+- История всех кампаний с фильтрацией
+- Экспорт отчетов в CSV/JSON
+
+### 🛡️ Безопасность и контроль
+
+- Row Level Security (RLS) для всех таблиц Supabase
+- Шифрование Telegram credentials (AES-256-CBC)
+- Audit trail всех действий пользователей
+- Role-based access control (Admin/Operator/Auditor)
+- Rate limiting по user_id
+- Защита от несанкционированного доступа к данным других пользователей
+- Автоматическое обнаружение и пауза при FLOOD_WAIT
+- Маркировка неактивных каналов при PEER_BLOCKED ошибках
+
+### 🔄 Workers и фоновые задачи
+
+- Отдельный worker процесс для обработки очередей
+- Campaign worker для оркестрации кампаний
+- Message worker для доставки сообщений
+- Автоматический retry при временных ошибках
+- Graceful shutdown при остановке workers
+- Логирование всех операций в БД
 
 ## 🛠️ Технологический стек
 
-### Frontend
-- ⚛️ **React 18** + **TypeScript** — современный UI
-- 🎨 **Vite** — быстрая сборка и hot reload
-- 🧩 **shadcn/ui** — красивые компоненты на Radix UI
-- 🎯 **Tailwind CSS** — utility-first стилизация
-- 📡 **Zustand** — легковесный state management
-- 🔗 **React Router** — клиентская маршрутизация
-- 📝 **React Hook Form** + **Zod** — валидация форм
-
 ### Backend
-- 🟢 **Node.js** + **Express** — REST API сервер
-- 🗄️ **Prisma** — type-safe ORM для работы с БД
-- 📮 **BullMQ** + **Redis** — очереди задач
-- 📱 **GramJS** — клиент Telegram API
-- 🔑 **Jose** — JWT аутентификация
-- 🛡️ **Helmet** — security middleware
-- 🔄 **CORS** — кросс-доменные запросы
+- **Node.js** 20+ — серверная платформа
+- **TypeScript** 5.3 — type-safe разработка
+- **Express** 4.18 — REST API server
+- **Supabase** (@supabase/supabase-js ^2.75.0) — PostgreSQL БД + Auth
+- **pg-boss** ^9.0.3 — PostgreSQL-based job queue
+- **GramJS** (telegram ^2.26.22) — Telegram MTProto клиент
+- **Jose** — JWT token handling
+- **bcryptjs** — password hashing
+- **Zod** — schema validation
+
+### Frontend
+- **React** 18 + **TypeScript** — UI framework
+- **Vite** — build tool и dev server
+- **shadcn/ui** — компонентная библиотека на Radix UI
+- **Tailwind CSS** — utility-first стилизация
+- **React Router** — клиентская маршрутизация
+- **Zustand** — state management (опционально)
 
 ### Инфраструктура
-- 🚀 **Vercel** — deployment frontend (free tier)
-- 💾 **Supabase/Neon** — PostgreSQL database
-- 🔴 **Redis** — job queue и кэш
-- 🖥️ **VPS/Railway** — backend workers
+- **Supabase** — PostgreSQL database + Auth + Storage
+- **Vercel/Railway** — deployment платформы
+- **Git** — version control
 
 ## 📦 Требования
 
-- **Node.js** ≥ 18.x
-- **PostgreSQL** ≥ 14.x (Supabase/Neon/Railway)
-- **Redis** ≥ 7.x (для BullMQ)
-- **Telegram API credentials** (API ID, API Hash, Session String)
+- **Node.js** ≥ 20.x
+- **Supabase** проект (PostgreSQL + Auth)
+- **Telegram API credentials** (API ID, API Hash, получаются на my.telegram.org)
 - **Git** для клонирования репозитория
 
 ## 🚀 Быстрый старт
@@ -85,788 +145,344 @@
 ### 1. Клонирование репозитория
 
 ```bash
-git clone https://github.com/filstack/predlagator.git
+git clone https://github.com/your-repo/predlagator.git
 cd predlagator
 ```
 
-### 2. Установка зависимостей
-
-Установите зависимости для всех частей проекта:
+### 2. Настройка Backend
 
 ```bash
-# Root dependencies
+cd backend
 npm install
+```
 
-# Frontend
-cd frontend
-npm install
+Создайте файл `backend/.env`:
 
-# Backend
-cd ../backend
-npm install
+```env
+# Supabase
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+SUPABASE_ANON_KEY=your_anon_key
+SUPABASE_DIRECT_URL=postgres://postgres.project:[password]@aws-region.pooler.supabase.com:5432/postgres
 
-# Shared schemas
-cd ../shared
-npm install
+# Encryption
+ENCRYPTION_KEY=your_32_byte_hex_key
+
+# Server
+PORT=3000
+NODE_ENV=development
 ```
 
 ### 3. Настройка базы данных
 
-Создайте PostgreSQL базу данных (Supabase/Neon/Railway) и настройте переменные окружения:
-
-**Backend** (`backend/.env`):
-```env
-# Database
-DATABASE_URL="postgresql://user:password@host:5432/predlagator?schema=public"
-
-# Redis для очередей
-REDIS_URL="redis://localhost:6379"
-
-# Telegram API
-TELEGRAM_API_ID=12345678
-TELEGRAM_API_HASH=your_api_hash_here
-TELEGRAM_SESSION=your_session_string_here
-
-# JWT
-JWT_SECRET=your_secure_random_secret_key
-
-# Server
-PORT=4000
-NODE_ENV=development
-```
-
-**Frontend** (`frontend/.env`):
-```env
-VITE_API_URL=http://localhost:4000
-```
-
-### 4. Применение миграций
+Выполните миграции в Supabase:
 
 ```bash
-cd backend
-npx prisma migrate dev
-npx prisma generate
+# Скопируйте SQL из shared/migrations/ в Supabase SQL Editor
+# Или используйте Supabase CLI
+supabase migration up
 ```
 
-### 5. Инициализация данных (опционально)
+### 4. Запуск Backend
 
 ```bash
-cd shared
-npx prisma db seed
-```
-
-### 6. Запуск проекта
-
-#### Development режим
-
-**Терминал 1 - Backend API:**
-```bash
-cd backend
+# Терминал 1: API server
 npm run dev
-```
 
-**Терминал 2 - Worker для очередей:**
-```bash
-cd backend
+# Терминал 2: Worker process
 npm run worker
 ```
 
-**Терминал 3 - Frontend:**
+### 5. Настройка Frontend
+
 ```bash
-cd frontend
+cd ../frontend
+npm install
+```
+
+Создайте файл `frontend/.env`:
+
+```env
+VITE_API_URL=http://localhost:3000
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your_anon_key
+```
+
+### 6. Запуск Frontend
+
+```bash
 npm run dev
 ```
 
-Приложение будет доступно:
-- 🌐 Frontend: `http://localhost:5173`
-- 🔌 Backend API: `http://localhost:4000`
+Приложение будет доступно на `http://localhost:5173`
 
-## 📖 Получение Telegram credentials
+## 📖 Использование
 
-### API ID и API Hash
+### Первый запуск
 
-1. Перейдите на https://my.telegram.org/auth
-2. Войдите с номером телефона
-3. Перейдите в "API development tools"
-4. Создайте приложение и скопируйте `api_id` и `api_hash`
+1. **Регистрация**: Откройте приложение и зарегистрируйтесь (email + password)
+2. **Onboarding**: Следуйте 3-шаговому процессу настройки Telegram:
+   - Введите API ID, API Hash, Phone number
+   - Подтвердите авторизацию через SMS код (и 2FA если включена)
+   - Session string автоматически сохранится
+3. **Готово**: Начните импортировать каналы и создавать кампании
 
-### Session String
+### Создание первой рассылки
 
-Выполните скрипт авторизации (один раз):
-
-```javascript
-// auth-script.js
-import { TelegramClient } from 'telegram';
-import { StringSession } from 'telegram/sessions/index.js';
-import readline from 'readline';
-
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout
-});
-
-const question = (query) => new Promise((resolve) => rl.question(query, resolve));
-
-const apiId = 12345678; // Ваш API ID
-const apiHash = 'your_api_hash'; // Ваш API Hash
-const stringSession = new StringSession('');
-
-(async () => {
-  const client = new TelegramClient(stringSession, apiId, apiHash, {
-    connectionRetries: 5,
-  });
-
-  await client.start({
-    phoneNumber: async () => await question('Phone number: '),
-    password: async () => await question('2FA password (if enabled): '),
-    phoneCode: async () => await question('Code from Telegram: '),
-    onError: (err) => console.error(err),
-  });
-
-  console.log('\n✅ Session String:');
-  console.log(client.session.save());
-  console.log('\nCopy this string to TELEGRAM_SESSION in .env file');
-  
-  process.exit(0);
-})();
-```
-
-Запустите:
-```bash
-node auth-script.js
-```
-
-Скопируйте полученную строку в `TELEGRAM_SESSION` в `.env`
+1. **Импорт каналов**: Загрузите JSONL/CSV файл с каналами
+2. **Создание батча**: Выберите целевые каналы и создайте батч
+3. **Шаблон**: Создайте сообщение (текст + опционально медиа)
+4. **Кампания**: Создайте кампанию, выберите батч, шаблон и Telegram аккаунт
+5. **Запуск**: Запустите кампанию и отслеживайте прогресс в реальном времени
 
 ## 📂 Структура проекта
 
 ```
-predlagator/
-├── frontend/                 # React + Vite приложение
-│   ├── src/
-│   │   ├── components/      # UI компоненты (shadcn/ui)
-│   │   ├── pages/           # Страницы приложения
-│   │   ├── hooks/           # Custom React hooks
-│   │   ├── lib/             # Утилиты и хелперы
-│   │   ├── store/           # Zustand stores
-│   │   └── App.tsx          # Главный компонент
-│   ├── vite.config.ts
-│   └── package.json
-│
-├── backend/                  # Express API сервер
-│   ├── src/
-│   │   ├── routes/          # API роуты
-│   │   ├── controllers/     # Контроллеры бизнес-логики
-│   │   ├── services/        # Сервисы (Telegram, Queue)
-│   │   ├── middleware/      # Auth, validation
-│   │   ├── workers/         # BullMQ job processors
-│   │   ├── server.ts        # HTTP сервер
-│   │   └── worker-server.ts # Worker процесс
-│   ├── prisma/
-│   │   ├── schema.prisma    # Database schema
-│   │   └── migrations/      # DB миграции
-│   └── package.json
-│
-├── shared/                   # Общие схемы и типы
-│   ├── src/schemas/         # Zod схемы валидации
-│   ├── prisma/              # Shared Prisma schema
-│   └── package.json
-│
-├── batched_files/            # Импортированные каналы
-│   └── [category]/          # Папки по категориям
-│       └── *.jsonl          # JSONL файлы с каналами
-│
-├── specs/                    # Спецификации проекта
-│   └── 001-telegram-channel-broadcast/
-│       ├── spec.md          # Основная спецификация
-│       ├── data-model.md    # Модель данных
-│       ├── contracts/       # API контракты
-│       └── checklists/      # Чеклисты
-│
-└── README.md
+backend/
+├── src/
+│   ├── server.ts              # Express API server
+│   ├── worker-server.ts       # Worker process (pg-boss)
+│   ├── api/                   # API endpoints
+│   │   ├── auth.ts            # Supabase Auth endpoints
+│   │   ├── campaigns.ts       # Campaign CRUD
+│   │   ├── channels.ts        # Channel management
+│   │   └── ...
+│   ├── workers/
+│   │   ├── campaign-worker.ts # Campaign orchestration
+│   │   └── message-worker.ts  # Message delivery
+│   ├── services/
+│   │   └── telegram.ts        # Telegram client management
+│   ├── lib/
+│   │   ├── supabase.ts        # Supabase client
+│   │   └── telegram-client.ts # Multi-tenant Telegram clients
+│   ├── middleware/
+│   │   ├── authorize.ts       # Supabase Auth middleware
+│   │   └── validate.ts        # Request validation
+│   └── utils/
+│       ├── encryption.ts      # AES-256 encryption
+│       ├── jwt.ts             # JWT helpers
+│       └── bcrypt.ts          # Password hashing
+
+frontend/
+├── src/
+│   ├── pages/                 # React pages
+│   │   ├── Login.tsx
+│   │   ├── Register.tsx
+│   │   ├── Onboarding.tsx
+│   │   ├── Channels.tsx
+│   │   ├── Batches.tsx
+│   │   ├── Campaigns.tsx
+│   │   └── ...
+│   ├── components/            # UI components
+│   ├── contexts/
+│   │   └── AuthContext.tsx    # Supabase Auth context
+│   └── lib/
+│       └── api.ts             # API client with JWT
+
+shared/
+├── migrations/                # SQL миграции для Supabase
+│   ├── 001_initial_schema.sql
+│   ├── 002_multitenancy.sql
+│   └── ...
+└── types/                     # Shared TypeScript types
+
+specs/
+├── 001-telegram-channel-broadcast/  # Feature spec 001
+├── 002-migrate-from-bullmq/         # Feature spec 002
+└── 003-multitenancy-supabase-auth/  # Feature spec 003
 ```
 
 ## 🔌 API Reference
 
-### Основные endpoints
+### Аутентификация
 
-#### Аутентификация
-```
-POST   /api/auth/login       - Вход в систему
-POST   /api/auth/register    - Регистрация (только admin)
-POST   /api/auth/logout      - Выход
-GET    /api/auth/me          - Текущий пользователь
-```
+- `POST /api/auth/register` - Регистрация нового пользователя
+- `POST /api/auth/login` - Вход в систему
+- `POST /api/auth/logout` - Выход из системы
+- `GET /api/auth/me` - Получить текущего пользователя
 
-#### Каналы
-```
-GET    /api/channels                  - Список каналов (пагинация, фильтры)
-GET    /api/channels/:id              - Детали канала
-POST   /api/channels/import           - Импорт из CSV/JSONL
-POST   /api/channels/check-available  - Проверка доступности
-GET    /api/channels/:id/preview      - Превью канала
-```
+### Telegram Accounts
 
-#### Батчи
-```
-GET    /api/batches              - Список батчей
-POST   /api/batches              - Создать батч
-GET    /api/batches/:id          - Детали батча
-PUT    /api/batches/:id          - Обновить батч (draft only)
-DELETE /api/batches/:id          - Удалить батч (draft only)
-POST   /api/batches/:id/clone    - Клонировать батч
-POST   /api/batches/:id/channels - Добавить каналы
-DELETE /api/batches/:id/channels - Удалить каналы
-GET    /api/batches/:id/export   - Экспорт CSV/JSON
-```
+- `GET /api/telegram-accounts` - Список Telegram аккаунтов пользователя
+- `POST /api/telegram-accounts` - Добавить новый Telegram аккаунт
+- `PUT /api/telegram-accounts/:id` - Обновить Telegram аккаунт
+- `DELETE /api/telegram-accounts/:id` - Удалить Telegram аккаунт
+- `POST /api/telegram-accounts/:id/auth` - Авторизация в Telegram (получить SMS код)
+- `POST /api/telegram-accounts/:id/verify` - Подтвердить код и сохранить session
 
-#### Шаблоны
-```
-GET    /api/templates        - Список шаблонов
-POST   /api/templates        - Создать шаблон
-GET    /api/templates/:id    - Детали шаблона
-PUT    /api/templates/:id    - Обновить шаблон
-DELETE /api/templates/:id    - Удалить шаблон
-```
+### Channels
 
-#### Кампании
-```
-GET    /api/campaigns             - Список кампаний (история)
-POST   /api/campaigns             - Создать кампанию
-GET    /api/campaigns/:id         - Детали кампании
-POST   /api/campaigns/:id/start   - Запустить кампанию
-POST   /api/campaigns/:id/pause   - Поставить на паузу
-POST   /api/campaigns/:id/resume  - Возобновить
-GET    /api/campaigns/:id/logs    - Real-time логи
-GET    /api/campaigns/:id/metrics - Метрики кампании
-GET    /api/campaigns/:id/export  - Экспорт отчета
-```
+- `GET /api/channels` - Список каналов (с фильтрацией и пагинацией)
+- `POST /api/channels/import` - Импорт каналов из JSONL/CSV
+- `GET /api/channels/:id` - Детали канала
+- `PUT /api/channels/:id` - Обновить канал
+- `DELETE /api/channels/:id` - Удалить канал
+- `POST /api/channels/check-availability` - Проверить доступность каналов
 
-#### Пользователи (Admin only)
-```
-GET    /api/users        - Список пользователей
-POST   /api/users        - Создать пользователя
-PUT    /api/users/:id    - Обновить роль
-DELETE /api/users/:id    - Удалить пользователя
-```
+### Batches
 
-#### Audit Log (Admin/Auditor)
-```
-GET    /api/audit        - Журнал действий (фильтры)
-```
+- `GET /api/batches` - Список батчей
+- `POST /api/batches` - Создать батч
+- `GET /api/batches/:id` - Детали батча
+- `PUT /api/batches/:id` - Обновить батч
+- `DELETE /api/batches/:id` - Удалить батч
+- `POST /api/batches/:id/clone` - Клонировать батч
+- `POST /api/batches/:id/channels` - Добавить каналы в батч
+- `DELETE /api/batches/:id/channels` - Удалить каналы из батча
 
-### Примеры запросов
+### Templates
 
-#### Создание батча
-```bash
-curl -X POST http://localhost:4000/api/batches \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Tech Channels Q4",
-    "channelIds": [1, 2, 3, 4, 5]
-  }'
-```
+- `GET /api/templates` - Список шаблонов
+- `POST /api/templates` - Создать шаблон
+- `GET /api/templates/:id` - Детали шаблона
+- `PUT /api/templates/:id` - Обновить шаблон
+- `DELETE /api/templates/:id` - Удалить шаблон
 
-#### Запуск кампании
-```bash
-curl -X POST http://localhost:4000/api/campaigns/:id/start \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "mode": "live",
-    "throttle": {
-      "msgPerSec": 2,
-      "delayMs": 500
-    },
-    "retryPolicy": {
-      "maxAttempts": 3,
-      "backoff": "exponential"
-    }
-  }'
-```
+### Campaigns
 
-#### Получение метрик кампании
-```bash
-curl -X GET http://localhost:4000/api/campaigns/:id/metrics \
-  -H "Authorization: Bearer YOUR_TOKEN"
-```
-
-**Response:**
-```json
-{
-  "campaignId": "123",
-  "status": "sending",
-  "totalJobs": 1000,
-  "completed": 750,
-  "failed": 50,
-  "queued": 200,
-  "successRate": 93.75,
-  "speed": 2.1,
-  "errors": {
-    "FLOOD_WAIT": 30,
-    "PEER_BLOCKED": 15,
-    "NETWORK_ERROR": 5
-  }
-}
-```
-
-## 💡 Типовые сценарии использования
-
-### 1️⃣ Первая рассылка
-
-```typescript
-// 1. Импортируем каналы
-POST /api/channels/import
-{
-  "file": "channels.jsonl",
-  "category": "tech"
-}
-
-// 2. Создаем батч
-POST /api/batches
-{
-  "name": "Tech Channels Q1",
-  "channelIds": [1, 2, 3, 4, 5]
-}
-
-// 3. Создаем шаблон сообщения
-POST /api/templates
-{
-  "name": "Product Promo",
-  "content": "Привет {{username}}! Новое предложение для {{category}} каналов",
-  "mediaUrl": "https://example.com/promo.jpg"
-}
-
-// 4. Создаем кампанию
-POST /api/campaigns
-{
-  "batchId": 1,
-  "templateId": 1,
-  "mode": "test"
-}
-
-// 5. Тестируем
-POST /api/campaigns/1/start
-{
-  "mode": "test"
-}
-
-// 6. Если ОК, запускаем на всю базу
-POST /api/campaigns/1/start
-{
-  "mode": "live",
-  "throttle": { "msgPerSec": 2 }
-}
-```
-
-### 2️⃣ Мониторинг кампании
-
-```javascript
-// Frontend: Подписка на обновления
-const pollMetrics = async (campaignId) => {
-  const interval = setInterval(async () => {
-    const response = await fetch(`/api/campaigns/${campaignId}/metrics`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const metrics = await response.json();
-    
-    updateDashboard(metrics);
-    
-    if (metrics.status === 'completed') {
-      clearInterval(interval);
-    }
-  }, 2000); // Poll every 2 seconds
-};
-```
-
-### 3️⃣ Автоматическая пауза при ошибках
-
-```typescript
-// Worker автоматически паузит кампанию при FLOOD_WAIT
-// Настраивается в config
-{
-  "autoПауза": {
-    "floodThreshold": 3,  // 3 ошибки FLOOD подряд
-    "errorRate": 0.1      // или 10% failed jobs
-  }
-}
-```
+- `GET /api/campaigns` - Список кампаний
+- `POST /api/campaigns` - Создать кампанию
+- `GET /api/campaigns/:id` - Детали кампании
+- `POST /api/campaigns/:id/start` - Запустить кампанию
+- `POST /api/campaigns/:id/pause` - Поставить на паузу
+- `POST /api/campaigns/:id/resume` - Возобновить
+- `GET /api/campaigns/:id/metrics` - Метрики кампании
+- `GET /api/campaigns/:id/logs` - Логи кампании
+- `GET /api/campaigns/:id/export` - Экспорт отчета
 
 ## 🔒 Безопасность
 
-### 🔐 Шифрование Session Strings
+### Row Level Security (RLS)
 
-Session strings шифруются AES-256 перед сохранением в БД:
+Все таблицы защищены RLS политиками:
+- Пользователи видят только свои данные
+- Невозможен доступ к данным других пользователей через API
+- Service role используется только для системных операций
 
-```typescript
-// backend/src/services/encryption.ts
-import crypto from 'crypto';
+### Шифрование
 
-const ALGORITHM = 'aes-256-gcm';
-const KEY = process.env.ENCRYPTION_KEY; // 32 байта
+- Telegram credentials (API Hash, Session String) шифруются AES-256-CBC
+- ENCRYPTION_KEY хранится в переменных окружения
+- IV генерируется случайно для каждого шифрования
 
-export function encrypt(text: string): string {
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv(ALGORITHM, KEY, iv);
-  
-  let encrypted = cipher.update(text, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  
-  const authTag = cipher.getAuthTag();
-  
-  return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
-}
-```
+### Аудит
 
-### 👥 Role-Based Access Control
+- Все критические операции логируются в audit_logs
+- Сохраняются: user_id, action, entity_type, entity_id, timestamp, IP address
 
-Три роли с разными правами:
-
-| Роль | Права |
-|------|-------|
-| **Admin** | Полный доступ: управление пользователями, view session strings, delete any campaign |
-| **Operator** | Создание батчей, кампаний, просмотр собственных кампаний |
-| **Auditor** | Read-only: история кампаний, логи, отчеты |
-
-### 📝 Audit Trail
-
-Все действия логируются:
-
-```sql
--- Пример записи в audit_log
-INSERT INTO audit_log (
-  user_id, action, entity_type, entity_id, 
-  previous_value, new_value, ip_address
-) VALUES (
-  1, 'campaign_launched', 'Campaign', 42,
-  '{"status": "draft"}', '{"status": "sending"}', 
-  '192.168.1.1'
-);
-```
-
-### 🚫 Opt-Out Management
-
-```typescript
-// Каналы с opt_out=true не могут быть добавлены в батчи
-POST /api/batches/1/channels
-{
-  "channelIds": [10, 20, 30] // 20 has opt_out=true
-}
-
-// Response 400:
-{
-  "error": "Cannot add opt-out channels",
-  "blockedChannels": [20]
-}
-```
-
-## ⚡ Performance
+## ⚡ Производительность
 
 ### Оптимизации
 
-- 🚀 **Connection pooling**: 3-5 GramJS sessions параллельно
-- 📦 **Job batching**: BullMQ группирует задачи для эффективности
-- 💾 **Caching**: Redis кэш для peer_id резолвинга
-- ⏱️ **Throttling**: Встроенная защита от FLOOD_WAIT
-- 📊 **Indexing**: Оптимизированные индексы в Prisma schema
+- Кэширование Telegram клиентов (до 50 подключений)
+- LRU eviction для управления памятью
+- PostgreSQL индексы на все frequently queried поля
+- pg-boss batch processing для эффективной обработки jobs
+- Connection pooling для Supabase
 
 ### Масштабируемость
 
-- До **10,000 каналов** в одном батче
-- До **100 concurrent campaigns** (limited by Redis/workers)
-- Throughput: **2-30 msg/sec** (configurable, respecting Telegram limits)
-
-## 🚀 Production Deployment
-
-### Vercel (Frontend)
-
-1. **Подключите GitHub репозиторий к Vercel**
-2. **Настройте Build settings:**
-   - Framework: Vite
-   - Root Directory: `frontend`
-   - Build Command: `npm run build`
-   - Output Directory: `dist`
-
-3. **Environment Variables:**
-   ```
-   VITE_API_URL=https://your-backend.railway.app
-   ```
-
-4. **Deploy:**
-   ```bash
-   git push origin main
-   # Vercel автоматически задеплоит
-   ```
-
-### Railway/Render (Backend + Worker)
-
-**Backend API:**
-```bash
-# Dockerfile для backend
-FROM node:18-alpine
-WORKDIR /app
-COPY backend/package*.json ./
-RUN npm ci --only=production
-COPY backend/ .
-RUN npx prisma generate
-EXPOSE 4000
-CMD ["npm", "start"]
-```
-
-**Worker process:**
-```bash
-# Отдельный сервис для worker
-CMD ["npm", "run", "worker"]
-```
-
-**Environment Variables на Railway:**
-```env
-DATABASE_URL=postgresql://...
-REDIS_URL=redis://...
-TELEGRAM_API_ID=...
-TELEGRAM_API_HASH=...
-TELEGRAM_SESSION=...
-JWT_SECRET=...
-ENCRYPTION_KEY=...
-NODE_ENV=production
-```
-
-### Docker Compose (Self-hosted)
-
-```yaml
-version: '3.8'
-
-services:
-  postgres:
-    image: postgres:14-alpine
-    environment:
-      POSTGRES_DB: predlagator
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-
-  backend:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-    environment:
-      DATABASE_URL: postgresql://admin:${DB_PASSWORD}@postgres:5432/predlagator
-      REDIS_URL: redis://redis:6379
-      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
-      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
-      TELEGRAM_SESSION: ${TELEGRAM_SESSION}
-      JWT_SECRET: ${JWT_SECRET}
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
-    ports:
-      - "4000:4000"
-    depends_on:
-      - postgres
-      - redis
-    restart: unless-stopped
-
-  worker:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-    command: npm run worker
-    environment:
-      DATABASE_URL: postgresql://admin:${DB_PASSWORD}@postgres:5432/predlagator
-      REDIS_URL: redis://redis:6379
-      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
-      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
-      TELEGRAM_SESSION: ${TELEGRAM_SESSION}
-    depends_on:
-      - postgres
-      - redis
-    restart: unless-stopped
-
-  frontend:
-    build:
-      context: .
-      dockerfile: frontend/Dockerfile
-    environment:
-      VITE_API_URL: http://localhost:4000
-    ports:
-      - "5173:80"
-    restart: unless-stopped
-
-volumes:
-  postgres_data:
-  redis_data:
-```
-
-Запуск:
-```bash
-docker-compose up -d
-```
+- Поддержка нескольких пользователей параллельно
+- Неограниченное количество Telegram аккаунтов на пользователя
+- До 10,000+ каналов на батч
+- Throughput: 2-30 сообщений/сек (настраиваемо)
 
 ## 🐛 Troubleshooting
 
-### ❌ FLOOD_WAIT ошибки
+### FLOOD_WAIT ошибки
 
-**Проблема:** Слишком быстрая отправка сообщений
+**Проблема**: Telegram возвращает ошибку о превышении лимита
 
-**Решение:**
-- Уменьшите throttle до 1-2 msg/sec
-- Увеличьте delay между сообщениями
-- Используйте несколько session strings (разные аккаунты)
-- Подождите время, указанное в ошибке
+**Решение**:
+- Уменьшите throttling до 1-2 msg/sec
+- Система автоматически паузит кампанию
+- Используйте несколько Telegram аккаунтов для параллельной отправки
 
-### ❌ Кампания не запускается
+### Session expired
 
-**Проблема:** Status stuck в "draft"
+**Проблема**: AUTH_KEY_UNREGISTERED или SESSION_REVOKED
 
-**Решение:**
-1. Проверьте, запущен ли worker процесс: `npm run worker`
-2. Убедитесь, что Redis доступен
-3. Проверьте логи worker: `docker logs predlagator-worker`
+**Решение**:
+- Пройдите повторно процесс авторизации в Telegram
+- Создайте новый session string через интерфейс приложения
 
-### ❌ Session expired
+### База данных недоступна
 
-**Проблема:** "AUTH_KEY_UNREGISTERED" или "SESSION_REVOKED"
+**Проблема**: Ошибки подключения к Supabase
 
-**Решение:**
-1. Пересоздайте session string через auth-script
-2. Обновите `TELEGRAM_SESSION` в .env
-3. Перезапустите backend и worker
-
-### ❌ Database connection failed
-
-**Проблема:** "Can't reach database server"
-
-**Решение:**
-```bash
-# Проверьте подключение к БД
-psql $DATABASE_URL
-
-# Проверьте миграции
-cd backend
-npx prisma migrate status
-npx prisma migrate deploy
-```
-
-### ❌ Frontend не видит Backend API
-
-**Проблема:** CORS errors, Network failed
-
-**Решение:**
-1. Убедитесь, что `VITE_API_URL` указывает на правильный адрес
-2. Проверьте CORS настройки в backend:
-```typescript
-// backend/src/server.ts
-app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-  credentials: true
-}));
-```
-
-## ⚠️ Ограничения Telegram API
-
-- 📦 **Размер медиа:** max 50 MB
-- ⚡ **Rate limits:** ~30 msg/sec глобально, 20 msg/min per chat
-- 🚫 **Спам:** 300+ msg/day может вызвать бан
-- 📏 **Длина сообщения:** max 4096 символов
-- 👤 **Peer limitations:** Нельзя писать пользователям, которые не начали диалог первыми
+**Решение**:
+- Проверьте SUPABASE_URL и SUPABASE_SERVICE_ROLE_KEY
+- Убедитесь, что миграции применены
+- Проверьте статус Supabase проекта в dashboard
 
 ## 📝 Changelog
 
-### 🎯 Roadmap (Planned)
+### v1.0.0 - Текущая версия
 
-#### v1.1.0 - Q2 2025
-- [ ] WebSocket для real-time updates (вместо polling)
+**Feature 003: Multitenancy + Supabase Auth**
+- ✅ Полная мультитенантность с изоляцией данных
+- ✅ Supabase Auth для регистрации и входа
+- ✅ Персональные Telegram credentials для каждого пользователя
+- ✅ Row Level Security (RLS) для всех таблиц
+- ✅ Шифрование Telegram credentials (AES-256)
+- ✅ Управление несколькими Telegram аккаунтами
+
+**Feature 002: Миграция на pg-boss**
+- ✅ Замена BullMQ+Redis на pg-boss
+- ✅ PostgreSQL-based очереди
+- ✅ Устранение зависимости от Redis
+- ✅ Dual-queue архитектура
+- ✅ Rate limiting через singleton jobs
+
+**Feature 001: Core functionality**
+- ✅ Управление каналами и батчами
+- ✅ Создание и управление кампаниями
+- ✅ Real-time мониторинг и метрики
+- ✅ Telegram message delivery через GramJS
+
+## 🎯 Roadmap
+
+### v1.1.0 (Планируется)
+
+- [ ] WebSocket для real-time обновлений без polling
 - [ ] Advanced analytics dashboard с графиками
-- [ ] Multi-language support (EN, RU, UA)
 - [ ] Telegram Bot interface для управления
+- [ ] Email уведомления о завершении кампаний
+- [ ] Password recovery через email
 
-#### v1.2.0 - Q3 2025
-- [ ] Channel analytics integration (subscribers, engagement)
-- [ ] Smart scheduling (optimal send times)
-- [ ] Template variables with conditions
-- [ ] Campaign cloning and templates
+### v1.2.0 (Планируется)
 
-#### v2.0.0 - Q4 2025
-- [ ] Multi-tenant support (agency mode)
+- [ ] Channel analytics (subscribers, engagement metrics)
+- [ ] Smart scheduling (оптимальное время отправки)
+- [ ] Template variables с условной логикой
+- [ ] Campaign templates и cloning
+
+### v2.0.0 (Будущее)
+
+- [ ] Multi-language support (EN, RU, UA)
 - [ ] API webhooks для интеграций
-- [ ] Advanced A/B testing with statistical analysis
+- [ ] Advanced A/B testing с статистическим анализом
 - [ ] Mobile app (React Native)
-
-### 🚀 Current Version: MVP 1.0.0
-
-**Implemented:**
-- ✅ Channel catalog management с фильтрацией
-- ✅ Batch creation и management
-- ✅ Message templates с placeholders
-- ✅ Campaign execution с throttling
-- ✅ Real-time monitoring и metrics
-- ✅ Role-based access control
-- ✅ Audit trail logging
-- ✅ Session string encryption
-- ✅ Auto-pause на FLOOD_WAIT
-- ✅ Test mode и Dry run
-
-## 🤝 Contributing
-
-Contributions приветствуются! Пожалуйста:
-
-1. Fork репозитория
-2. Создайте feature branch:
-   ```bash
-   git checkout -b feature/002-advanced-analytics
-   ```
-3. Follow спецификации в `specs/`
-4. Commit изменения с conventional commits:
-   ```bash
-   git commit -m "feat(analytics): add engagement metrics dashboard"
-   ```
-5. Push и создайте Pull Request
-
-### Development Guidelines
-
-- 📝 TypeScript strict mode
-- 🧪 Unit tests для критической логики
-- 📚 JSDoc комментарии для публичных API
-- 🎨 Prettier + ESLint
-- 🔄 Conventional Commits
+- [ ] Subscription/billing система
 
 ## 📄 Лицензия
 
-MIT License - смотрите [LICENSE](LICENSE)
+MIT License
 
 ## 🙏 Благодарности
 
+- **Supabase** - PostgreSQL database + Auth
 - **GramJS** - Telegram MTProto клиент
-- **Prisma** - Database ORM
+- **pg-boss** - PostgreSQL job queue
 - **shadcn/ui** - UI компоненты
-- **BullMQ** - Job queue
-- **tg-scrap** - Channel scraping tool
+- **React** - UI framework
 
-## 📞 Контакты и поддержка
+## 📞 Поддержка
 
-- 🐛 **Bug Reports:** [GitHub Issues](https://github.com/filstack/predlagator/issues)
-- 💡 **Feature Requests:** [GitHub Discussions](https://github.com/filstack/predlagator/discussions)
-- 📧 **Email:** support@predlagator.app
-- 💬 **Telegram:** [@predlagator_support](https://t.me/predlagator_support)
+- 🐛 Bug Reports: GitHub Issues
+- 💡 Feature Requests: GitHub Discussions
+- 📧 Email: support@predlagator.app
 
 ---
 
-**🔗 Полезные ссылки:**
-- [Telegram API Documentation](https://core.telegram.org/api)
-- [GramJS Docs](https://gram.js.org/)
-- [Prisma Docs](https://www.prisma.io/docs)
-- [shadcn/ui](https://ui.shadcn.com/)
-- [Vercel Deployment](https://vercel.com/docs)
-
----
-
-⭐ **Если проект полезен, поставьте звезду на GitHub!**
+⚡ **Predlagator** - Профессиональная платформа для Telegram рассылок с полной мультитенантностью
