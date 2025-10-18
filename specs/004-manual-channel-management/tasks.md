@@ -52,22 +52,22 @@
 
 ### Backend Implementation for User Story 1
 
-- [ ] T009 [US1] Implement `createChannel()` method in `backend/src/services/channel-service.ts` для создания канала с валидацией
-- [ ] T010 [US1] Implement POST `/api/channels` endpoint in `backend/src/api/channels.ts` для создания канала
-- [ ] T011 [US1] Implement GET `/api/channels/check-username/:username` endpoint in `backend/src/api/channels.ts` для проверки уникальности username
+- [X] T009 [US1] Implement `createChannel()` method in `backend/src/services/channel-service.ts` для создания канала с валидацией
+- [X] T010 [US1] Implement POST `/api/channels` endpoint in `backend/src/api/channels.ts` для создания канала
+- [X] T011 [US1] Implement GET `/api/channels/check-username/:username` endpoint in `backend/src/api/channels.ts` для проверки уникальности username
 
 ### Frontend Implementation for User Story 1
 
-- [ ] T012 [P] [US1] Create API client в `frontend/src/services/channel-api.ts` с методами `createChannel()` и `checkUsernameAvailability()`
-- [ ] T013 [P] [US1] Create React Query hooks в `frontend/src/hooks/useChannels.ts` с `useCreateChannel()` mutation
-- [ ] T014 [P] [US1] Create debounce hook в `frontend/src/hooks/useDebounce.ts` для inline validation
-- [ ] T015 [US1] Create ChannelForm component в `frontend/src/components/channels/ChannelForm.tsx` с React Hook Form + Zod validation
-- [ ] T016 [US1] Implement inline username validation в ChannelForm с debounced API call и визуальной индикацией
-- [ ] T017 [US1] Implement multiple telegram links management в ChannelForm используя `useFieldArray`
-- [ ] T018 [US1] Implement network error handling в ChannelForm с retry dialog
-- [ ] T019 [US1] Create ChannelsPage в `frontend/src/pages/ChannelsPage.tsx` с кнопкой "Добавить канал" и формой
-- [ ] T020 [US1] Add route `/channels` в `frontend/src/App.tsx` (или router config) для ChannelsPage
-- [ ] T021 [US1] Add "Channels" tab в navigation menu
+- [X] T012 [P] [US1] Update Zustand channel-store с правильными типами и методами (вместо отдельного API client - проект использует Zustand)
+- [X] T013 [P] [US1] Update channel-store с методом checkUsernameAvailability() (вместо React Query hooks - проект использует Zustand)
+- [X] T014 [P] [US1] Create debounce hook в `frontend/src/hooks/useDebounce.ts` для inline validation
+- [X] T015 [US1] Create ChannelForm component в `frontend/src/components/channels/ChannelForm.tsx` с React Hook Form + Zod validation
+- [X] T016 [US1] Implement inline username validation в ChannelForm с debounced API call и визуальной индикацией
+- [X] T017 [US1] Implement multiple telegram links management в ChannelForm используя `useFieldArray`
+- [X] T018 [US1] Implement network error handling в ChannelForm с retry dialog
+- [X] T019 [US1] Update ChannelsPage в `frontend/src/pages/Channels.tsx` с кнопкой "Добавить канал" и формой (обновлена для Feature 004)
+- [X] T020 [US1] Route `/` уже использует ChannelsPage как index route (уже настроен)
+- [X] T021 [US1] "Каналы" tab уже есть в navigation menu (обновлен на русский)
 
 **Checkpoint**: User Story 1 должна быть полностью функциональной - можно добавлять каналы через UI
 

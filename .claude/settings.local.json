@@ -31,7 +31,8 @@
       "Bash(curl:*)",
       "Bash(node test-channels-api.mjs:*)",
       "Bash(node check-table.mjs:*)",
-      "Bash(node test-channels-db.mjs:*)"
+      "Bash(node test-channels-db.mjs:*)",
+      "Bash(git reset:*)"
     ],
     "deny": [],
     "ask": []
