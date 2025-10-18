@@ -1,193 +1,225 @@
-// backend/src/api/channels.ts - MIGRATED TO SUPABASE
-import { Router } from 'express';
-import { getSupabase } from '../lib/supabase';
-import { validate } from '../middleware/validate';
+/**
+ * Channels API Router
+ * Feature: 004-manual-channel-management
+ *
+ * RESTful endpoints for channel management
+ * Base path: /api/channels
+ */
+
+import { Router, Request, Response, NextFunction } from 'express';
+import { channelService } from '../services/channel-service';
+import { validate, validateMultiple } from '../middleware/validate';
+import { authenticate } from '../middleware/auth';
 import {
-  channelQuerySchema,
   createChannelSchema,
   updateChannelSchema,
-} from '../../../shared/src/schemas/channel';
+  listChannelsQuerySchema,
+  channelIdSchema,
+  checkUsernameSchema,
+} from '../types/channel-validation';
 
 const router = Router();
 
-// GET /api/channels - List all channels with filters
-router.get('/', async (req, res, next) => {
-  try {
-    const query = channelQuerySchema.parse(req.query);
-    const { category, search, isActive, page, limit } = query;
-    const supabase = getSupabase();
+// All routes require authentication
+router.use(authenticate);
 
-    let dbQuery = supabase
-      .from('channels')
-      .select('*', { count: 'exact' });
+/**
+ * GET /api/channels
+ * List all channels (paginated)
+ */
+router.get(
+  '/',
+  validate(listChannelsQuerySchema, 'query'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
 
-    if (category) {
-      dbQuery = dbQuery.eq('category', category);
+      const query = req.query as any;
+      const result = await channelService.listChannels(query, userId);
+
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
     }
-
-    if (search) {
-      dbQuery = dbQuery.or(`username.ilike.%${search}%,title.ilike.%${search}%`);
-    }
-
-    if (isActive !== undefined) {
-      dbQuery = dbQuery.eq('is_active', isActive);
-    }
-
-    dbQuery = dbQuery
-      .order('created_at', { ascending: false })
-      .range((page - 1) * limit, page * limit - 1);
-
-    const { data: channels, error, count } = await dbQuery;
-
-    if (error) throw error;
-
-    res.json({
-      data: channels,
-      pagination: {
-        page,
-        limit,
-        total: count || 0,
-        pages: Math.ceil((count || 0) / limit),
-      },
-    });
-  } catch (error) {
-    next(error);
   }
-});
+);
 
-// GET /api/channels/:id - Get single channel
-router.get('/:id', async (req, res, next) => {
-  try {
-    const supabase = getSupabase();
+/**
+ * GET /api/channels/check-username/:username
+ * Check username availability
+ */
+router.get(
+  '/check-username/:username',
+  validate(checkUsernameSchema, 'params'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { username } = req.params;
+      const excludeChannelId = req.query.exclude_channel_id as string | undefined;
 
-    const { data: channel, error } = await supabase
-      .from('channels')
-      .select('*')
-      .eq('id', req.params.id)
-      .single();
-
-    if (error) throw error;
-
-    if (!channel) {
-      return res.status(404).json({ error: 'Channel not found' });
-    }
-
-    res.json(channel);
-  } catch (error) {
-    next(error);
-  }
-});
-
-// GET /api/channels/meta/categories - Get all unique categories
-router.get('/meta/categories', async (req, res, next) => {
-  try {
-    const supabase = getSupabase();
-
-    // Supabase doesn't have groupBy, so we'll fetch all categories and group manually
-    const { data: channels, error } = await supabase
-      .from('channels')
-      .select('category');
-
-    if (error) throw error;
-
-    // Group by category and count
-    const categoryMap = new Map<string, number>();
-    channels?.forEach((ch) => {
-      const count = categoryMap.get(ch.category) || 0;
-      categoryMap.set(ch.category, count + 1);
-    });
-
-    // Convert to array and sort by count
-    const categories = Array.from(categoryMap.entries())
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count);
-
-    res.json(categories);
-  } catch (error) {
-    next(error);
-  }
-});
-
-// POST /api/channels - Create new channel
-router.post('/', validate(createChannelSchema, 'body'), async (req, res, next) => {
-  try {
-    const { username, category, tgstatUrl, title, description, memberCount, isVerified, collectedAt } = req.body;
-    const supabase = getSupabase();
-
-    const { data: channel, error } = await supabase
-      .from('channels')
-      .insert({
+      const result = await channelService.checkUsernameAvailability(
         username,
-        category,
-        tgstat_url: tgstatUrl,
-        title,
-        description,
-        member_count: memberCount,
-        is_verified: isVerified ?? false,
-        collected_at: collectedAt || new Date().toISOString(),
-        is_active: true,
-        error_count: 0,
-      })
-      .select()
-      .single();
+        excludeChannelId
+      );
 
-    if (error) throw error;
-
-    res.status(201).json(channel);
-  } catch (error) {
-    next(error);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
   }
-});
+);
 
-// PATCH /api/channels/:id - Update channel
-router.patch('/:id', validate(updateChannelSchema, 'body'), async (req, res, next) => {
-  try {
-    const updates = req.body;
-    const supabase = getSupabase();
+/**
+ * GET /api/channels/:id
+ * Get single channel by ID
+ */
+router.get(
+  '/:id',
+  validate(channelIdSchema, 'params'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
 
-    // Convert camelCase to snake_case for Supabase
-    const updateData: any = { updated_at: new Date().toISOString() };
-    if (updates.username !== undefined) updateData.username = updates.username;
-    if (updates.category !== undefined) updateData.category = updates.category;
-    if (updates.tgstatUrl !== undefined) updateData.tgstat_url = updates.tgstatUrl;
-    if (updates.title !== undefined) updateData.title = updates.title;
-    if (updates.description !== undefined) updateData.description = updates.description;
-    if (updates.memberCount !== undefined) updateData.member_count = updates.memberCount;
-    if (updates.isVerified !== undefined) updateData.is_verified = updates.isVerified;
-    if (updates.isActive !== undefined) updateData.is_active = updates.isActive;
-    if (updates.errorCount !== undefined) updateData.error_count = updates.errorCount;
+      const { id } = req.params;
+      const channel = await channelService.getChannelById(id, userId);
 
-    const { data: channel, error } = await supabase
-      .from('channels')
-      .update(updateData)
-      .eq('id', req.params.id)
-      .select()
-      .single();
+      if (!channel) {
+        return res.status(404).json({ error: 'Channel not found' });
+      }
 
-    if (error) throw error;
-
-    res.json(channel);
-  } catch (error) {
-    next(error);
+      res.status(200).json(channel);
+    } catch (error) {
+      next(error);
+    }
   }
-});
+);
 
-// DELETE /api/channels/:id - Delete channel
-router.delete('/:id', async (req, res, next) => {
-  try {
-    const supabase = getSupabase();
+/**
+ * POST /api/channels
+ * Create new channel
+ */
+router.post(
+  '/',
+  validate(createChannelSchema, 'body'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
 
-    const { error } = await supabase
-      .from('channels')
-      .delete()
-      .eq('id', req.params.id);
+      const channel = await channelService.createChannel(req.body, userId);
 
-    if (error) throw error;
-
-    res.status(204).send();
-  } catch (error) {
-    next(error);
+      res.status(201).json(channel);
+    } catch (error) {
+      // Handle username conflict
+      if (error instanceof Error && error.message.includes('already exists')) {
+        return res.status(409).json({
+          error: {
+            type: 'CONFLICT',
+            message: error.message,
+          },
+        });
+      }
+      next(error);
+    }
   }
-});
+);
+
+/**
+ * PUT /api/channels/:id
+ * Update existing channel
+ */
+router.put(
+  '/:id',
+  validateMultiple({
+    params: channelIdSchema,
+    body: updateChannelSchema,
+  }),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const { id } = req.params;
+      const channel = await channelService.updateChannel(id, req.body, userId);
+
+      res.status(200).json(channel);
+    } catch (error) {
+      // Handle optimistic locking conflict
+      if (error instanceof Error && error.message.includes('CONFLICT')) {
+        return res.status(409).json({
+          error: {
+            type: 'CONFLICT',
+            message: error.message,
+          },
+        });
+      }
+
+      // Handle username conflict
+      if (error instanceof Error && error.message.includes('already exists')) {
+        return res.status(409).json({
+          error: {
+            type: 'CONFLICT',
+            message: error.message,
+          },
+        });
+      }
+
+      // Handle not found
+      if (error instanceof Error && error.message.includes('not found')) {
+        return res.status(404).json({ error: error.message });
+      }
+
+      next(error);
+    }
+  }
+);
+
+/**
+ * DELETE /api/channels/:id
+ * Delete channel
+ */
+router.delete(
+  '/:id',
+  validate(channelIdSchema, 'params'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const { id } = req.params;
+      await channelService.deleteChannel(id, userId);
+
+      res.status(204).send();
+    } catch (error) {
+      // Handle not found
+      if (error instanceof Error && error.message.includes('not found')) {
+        return res.status(404).json({ error: error.message });
+      }
+
+      // Handle conflict (channel used in campaigns)
+      if (error instanceof Error && error.message.includes('used in')) {
+        return res.status(409).json({
+          error: {
+            type: 'CONFLICT',
+            message: error.message,
+          },
+        });
+      }
+
+      next(error);
+    }
+  }
+);
 
 export default router;
