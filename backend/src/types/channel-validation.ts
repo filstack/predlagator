@@ -118,16 +118,22 @@ export const updateChannelSchema = z.object({
   status: channelStatusSchema.optional(),
 
   // Required for optimistic locking
+  // Accept any valid ISO 8601 date string (Supabase returns various formats)
   updated_at: z
     .string()
-    .datetime({ message: 'Неверный формат даты обновления' }),
+    .refine(
+      (val) => !isNaN(Date.parse(val)),
+      { message: 'Неверный формат даты обновления' }
+    ),
 });
 
 /**
  * List channels query parameters schema
+ * Note: Query parameters come as strings, so we use coerce to convert to numbers
  */
 export const listChannelsQuerySchema = z.object({
   page: z
+    .coerce
     .number()
     .int()
     .positive()
@@ -135,6 +141,7 @@ export const listChannelsQuerySchema = z.object({
     .optional(),
 
   limit: z
+    .coerce
     .number()
     .int()
     .positive()
