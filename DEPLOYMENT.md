@@ -94,15 +94,15 @@ SUPABASE_DIRECT_URL=postgresql://postgres.qjnxcjbzwelokluaiqmk:ваш_парол
 PORT=5000
 NODE_ENV=production
 
+# CORS (разрешенные origins)
+CORS_ORIGIN=https://vedbot.ru
+
 # Telegram (если используется)
 TELEGRAM_API_ID=ваш_api_id
 TELEGRAM_API_HASH=ваш_api_hash
 
 # Sessions
 SESSION_SECRET=ваш_длинный_случайный_секрет
-
-# Frontend URL для CORS
-FRONTEND_URL=https://vedbot.ru
 ```
 
 Сохраните файл: `Ctrl+X`, затем `Y`, затем `Enter`
@@ -251,7 +251,7 @@ server {
 
     # НОВАЯ СЕКЦИЯ: Predlagator API
     location /pred/api {
-        rewrite ^/pred/api/(.*) /$1 break;
+        rewrite ^/pred/api/(.*) /api/$1 break;
         proxy_pass http://localhost:5000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;

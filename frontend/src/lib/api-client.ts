@@ -1,7 +1,7 @@
 // frontend/src/lib/api-client.ts
 import axios, { AxiosInstance, AxiosError } from 'axios'
 
-const API_BASE_URL = `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000'}/api`
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
 
 class ApiClient {
   private client: AxiosInstance
@@ -35,7 +35,7 @@ class ApiClient {
       (error: AxiosError) => {
         if (error.response?.status === 401) {
           this.removeToken()
-          window.location.href = '/login'
+          window.location.href = '/pred/login'
         }
         return Promise.reject(error)
       }
@@ -80,6 +80,12 @@ class ApiClient {
     const response = await this.client.delete<T>(url)
     return response.data
   }
+
+  // Direct access to axios instance for custom requests
+  getClient(): AxiosInstance {
+    return this.client
+  }
 }
 
 export const apiClient = new ApiClient()
+export const api = apiClient.getClient()
