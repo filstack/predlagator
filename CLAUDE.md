@@ -1,6 +1,8 @@
-- работаетм только в папке D:\00_dev\01_Ведомости\Новая папка\бот_рассылка. пишем всегдя на русском
+﻿- работаетм только в папке D:\00_dev\01_Ведомости\Новая папка\бот_рассылка. пишем всегдя на русском
 
 ## Active Technologies
+- TypeScript 5.3, Node.js 20+ (004-manual-channel-management)
+- Supabase (PostgreSQL), snake_case naming convention (004-manual-channel-management)
 
 - **TypeScript** 5.3
 - **Node.js** 20+
@@ -68,15 +70,11 @@ SUPABASE_DIRECT_URL=postgres://postgres.qjnxcjbzwelokluaiqmk:[password]@aws-0-eu
 ```
 
 ## Recent Changes
+- 004-manual-channel-management: Added TypeScript 5.3, Node.js 20+
 
 **Feature 002: Migrate to pg-boss + Supabase SDK**
 - Replaced BullMQ/Redis with pg-boss (PostgreSQL-based queue)
 - Migrated from Prisma ORM to Supabase JavaScript SDK
-- Removed Redis dependency (eliminated ECONNREFUSED errors)
-- Dual-queue architecture: campaign orchestration + message delivery
-- Rate limiting via pg-boss singleton jobs
-- FLOOD_WAIT handling with custom retry delays
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->
-- я тебе еще раз говорю!!! работаем только в это папке D:\00_dev\01_Ведомости\Новая папка\бот_рассылка

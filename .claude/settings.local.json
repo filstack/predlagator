@@ -19,7 +19,19 @@
       "Bash(ping:*)",
       "Bash(cat:*)",
       "Bash(ipconfig /flushdns)",
-      "Bash(ipconfig:*)"
+      "Bash(ipconfig:*)",
+      "Bash(powershell:*)",
+      "Bash(dir:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(set:*)",
+      "Bash(psql:*)",
+      "Bash(npx supabase:*)",
+      "Bash(node scripts/apply-migration-004.mjs:*)",
+      "Bash(npm install:*)",
+      "Bash(curl:*)",
+      "Bash(node test-channels-api.mjs:*)",
+      "Bash(node check-table.mjs:*)",
+      "Bash(node test-channels-db.mjs:*)"
     ],
     "deny": [],
     "ask": []
