@@ -8,7 +8,7 @@ import * as path from 'path'
 
 /**
  * Telegram :;85=B 4;O @01>BK A API
- * A?>;L7C5B GramJS (telegram npm package)
+ * A?>;L7C5B GramJS (telegram npm package)
  */
 class TelegramClientManager {
   private client: TelegramClient | null = null
@@ -20,23 +20,23 @@ class TelegramClientManager {
   }
 
   /**
-   * =8F80;878@>20BL 8 ?>4:;NG8BL :;85=B0
+   * =8F80;878@>20BL 8 ?>4:;NG8BL :;85=B0
    */
   async connect(): Promise<void> {
     if (this.client?.connected) {
-      console.log(' Telegram :;85=B C65 ?>4:;NG5=')
+      console.log(' Telegram :;85=B C65 ?>4:;NG5=')
       return
     }
 
     if (this.isConnecting) {
-      console.log('� >4:;NG5=85 : Telegram C65 2 ?@>F5AA5...')
+      console.log('� >4:;NG5=85 : Telegram C65 2 ?@>F5AA5...')
       return
     }
 
     this.isConnecting = true
 
     try {
-      console.log('= >4:;NG5=85 : Telegram...')
+      console.log('= >4:;NG5=85 : Telegram...')
 
       const apiId = parseInt(process.env.TELEGRAM_API_ID || '')
       const apiHash = process.env.TELEGRAM_API_HASH || ''
@@ -57,32 +57,32 @@ class TelegramClientManager {
         useWSS: false,
       })
 
-      // >4:;NG05<AO
+      // >4:;NG05<AO
       await this.client.connect()
 
-      console.log(' Telegram :;85=B CA?5H=> ?>4:;NG5=')
+      console.log(' Telegram :;85=B CA?5H=> ?>4:;NG5=')
 
-      // >;CG05< 8=D>@<0F8N >1 0::0C=B5
+      // >;CG05< 8=D>@<0F8N >1 0::0C=B5
       const me = await this.client.getMe()
-      console.log(`   ::0C=B: ${me.firstName} (ID: ${me.id})`)
+      console.log(`   ::0C=B: ${me.firstName} (ID: ${me.id})`)
 
       // !>E@0=O5< >1=>2;5==CN A5AA8N
       const newSession = this.client.session.save()
       if (newSession !== sessionString) {
         console.log('=� !5AA8O >1=>2;5=0 (A>E@0=8B5 2 .env 5A;8 87<5=8;0AL)')
-        // TODO: 2B><0B8G5A:8 >1=>2;OBL .env 8;8 E@0=8BL 2 
+        // TODO: 2B><0B8G5A:8 >1=>2;OBL .env 8;8 E@0=8BL 2
       }
 
       this.isConnecting = false
     } catch (error) {
       this.isConnecting = false
-      console.error('L H81:0 ?>4:;NG5=8O : Telegram:', error)
+      console.error('L H81:0 ?>4:;NG5=8O : Telegram:', error)
       throw error
     }
   }
 
   /**
-   * >;CG8BL 0:B82=>3> :;85=B0
+   * >;CG8BL 0:B82=>3> :;85=B0
    */
   async getClient(): Promise<TelegramClient> {
     if (!this.client || !this.client.connected) {
@@ -90,32 +90,32 @@ class TelegramClientManager {
     }
 
     if (!this.client) {
-      throw new Error('5 C40;>AL ?>4:;NG8BLAO : Telegram')
+      throw new Error('5 C40;>AL ?>4:;NG8BLAO : Telegram')
     }
 
     return this.client
   }
 
   /**
-   * B:;NG8BL :;85=B0
+   * B:;NG8BL :;85=B0
    */
   async disconnect(): Promise<void> {
     if (this.client) {
       await this.client.disconnect()
       this.client = null
-      console.log('= Telegram :;85=B >B:;NG5=')
+      console.log('= Telegram :;85=B >B:;NG5=')
     }
   }
 
   /**
-   * @>25@8BL ?>4:;NG5=85
+   * @>25@8BL ?>4:;NG5=85
    */
   isConnected(): boolean {
     return this.client?.connected || false
   }
 
   /**
-   * 5@5?>4:;NG8BLAO
+   * 5@5?>4:;NG8BLAO
    */
   async reconnect(): Promise<void> {
     await this.disconnect()
@@ -135,12 +135,13 @@ class TelegramClientManager {
 // !8=3;B>= M:75<?;O@
 export const telegramClient = new TelegramClientManager()
 
-// 2B><0B8G5A:>5 ?>4:;NG5=85 ?@8 70?CA:5
-if (process.env.NODE_ENV !== 'test') {
-  telegramClient.connect().catch((error) => {
-    console.error('L 5 C40;>AL ?>4:;NG8BLAO : Telegram ?@8 70?CA:5:', error)
-  })
-}
+// 2B><0B8G5A:>5 ?>4:;NG5=85 >B:;NG5=> - ?>4:;NG5=85 ?@>87>9451 ?@8 ?5@2>< 2K7>25 getClient()
+// MB> @5H05B ?@>1;5<C AUTH_KEY_DUPLICATED :>340 70?CI5=K =5A:>;L:> ?@>F5AA>2 (API server + Worker)
+// if (process.env.NODE_ENV !== 'test') {
+//   telegramClient.connect().catch((error) => {
+//     console.error('L 5 C40;>AL ?>4:;NG8BLAO : Telegram ?@8 70?CA:5:', error)
+//   })
+// }
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {

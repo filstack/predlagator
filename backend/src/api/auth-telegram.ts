@@ -62,13 +62,20 @@ router.post('/start', async (req, res) => {
       phone,
     })
 
-    console.log('✓ SMS код отправлен на', phone)
+    // Проверяем, как был отправлен код
+    const isViaApp = (result as any).isCodeViaApp
+    const codeType = isViaApp ? 'через приложение Telegram' : 'как SMS'
+
+    console.log(`✓ Код отправлен ${codeType} на`, phone)
 
     return res.json({
       success: true,
       sessionId,
-      message: 'SMS код отправлен на ваш телефон',
+      message: isViaApp
+        ? 'Код отправлен в приложение Telegram. Проверьте чат "Telegram" или уведомления.'
+        : 'SMS код отправлен на ваш телефон',
       phoneCodeHash: result.phoneCodeHash,
+      isCodeViaApp: isViaApp,
     })
   } catch (error: any) {
     console.error('✗ Ошибка начала аутентификации:', error)
@@ -268,6 +275,30 @@ router.post('/cancel', async (req, res) => {
 })
 
 /**
+ * Получить текущую session string
+ */
+router.get('/get-session', async (req, res) => {
+  try {
+    const { telegramClient } = require('../lib/telegram-client')
+
+    const client = await telegramClient.getClient()
+    const sessionString = client.session.save() as unknown as string
+
+    return res.json({
+      success: true,
+      sessionString,
+    })
+  } catch (error: any) {
+    console.error('✗ Ошибка получения session:', error)
+
+    return res.status(500).json({
+      error: 'Не удалось получить session',
+      details: error.message,
+    })
+  }
+})
+
+/**
  * Обновить session string на бэкенде
  */
 router.post('/update-session', async (req, res) => {
@@ -285,10 +316,13 @@ router.post('/update-session', async (req, res) => {
     // Импортируем telegramClient
     const { telegramClient } = require('../lib/telegram-client')
 
-    // Обновляем session
+    // Обновляем session в памяти
     await telegramClient.updateSession(sessionString)
 
-    console.log('✓ Session string успешно обновлён')
+    // Сохраняем в .env файл
+    await updateEnvFile('TELEGRAM_SESSION', sessionString)
+
+    console.log('✓ Session string успешно обновлён и сохранён в .env')
 
     return res.json({
       success: true,
@@ -303,6 +337,89 @@ router.post('/update-session', async (req, res) => {
     })
   }
 })
+
+/**
+ * Сохранить Telegram credentials в .env файл
+ */
+router.post('/save-credentials', async (req, res) => {
+  try {
+    const { apiId, apiHash, sessionString } = req.body
+
+    if (!apiId || !apiHash) {
+      return res.status(400).json({
+        error: 'apiId и apiHash обязательны',
+      })
+    }
+
+    console.log('💾 Сохранение Telegram credentials в .env...')
+
+    // Обновляем .env файл
+    await updateEnvFile('TELEGRAM_API_ID', apiId.toString())
+    await updateEnvFile('TELEGRAM_API_HASH', apiHash)
+
+    if (sessionString) {
+      await updateEnvFile('TELEGRAM_SESSION', sessionString)
+    }
+
+    // Обновляем process.env
+    process.env.TELEGRAM_API_ID = apiId.toString()
+    process.env.TELEGRAM_API_HASH = apiHash
+    if (sessionString) {
+      process.env.TELEGRAM_SESSION = sessionString
+    }
+
+    console.log('✓ Telegram credentials сохранены в .env')
+
+    return res.json({
+      success: true,
+      message: 'Credentials успешно сохранены',
+    })
+  } catch (error: any) {
+    console.error('✗ Ошибка сохранения credentials:', error)
+
+    return res.status(500).json({
+      error: 'Не удалось сохранить credentials',
+      details: error.message,
+    })
+  }
+})
+
+/**
+ * Вспомогательная функция для обновления .env файла
+ */
+async function updateEnvFile(key: string, value: string): Promise<void> {
+  const fs = require('fs').promises
+  const path = require('path')
+
+  const envPath = path.join(__dirname, '..', '..', '.env')
+
+  try {
+    // Читаем текущий .env файл
+    const envContent = await fs.readFile(envPath, 'utf8')
+    const lines = envContent.split('\n')
+
+    // Ищем и обновляем нужную строку
+    let found = false
+    const updatedLines = lines.map((line: string) => {
+      if (line.startsWith(`${key}=`)) {
+        found = true
+        return `${key}=${value}`
+      }
+      return line
+    })
+
+    // Если ключ не найден, добавляем его
+    if (!found) {
+      updatedLines.push(`${key}=${value}`)
+    }
+
+    // Записываем обновленный файл
+    await fs.writeFile(envPath, updatedLines.join('\n'))
+  } catch (error) {
+    console.error('Ошибка обновления .env файла:', error)
+    throw error
+  }
+}
 
 // Очистка старых сессий (каждые 10 минут)
 setInterval(() => {
