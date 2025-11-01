@@ -243,6 +243,39 @@ export default function Settings() {
     setSessionId('')
   }
 
+  // Повторная отправка кода
+  const handleResendCode = async () => {
+    if (!sessionId) {
+      toast({
+        variant: 'destructive',
+        title: 'Ошибка',
+        description: 'Сессия не найдена',
+      })
+      return
+    }
+
+    try {
+      setLoading(true)
+      const data = await apiClient.post<{ success: boolean; message: string }>(
+        '/auth-telegram/resend-code',
+        { sessionId }
+      )
+
+      toast({
+        title: 'Код отправлен повторно',
+        description: data.message,
+      })
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Ошибка',
+        description: error.response?.data?.details || 'Не удалось повторно отправить код',
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // Выход из аккаунта
   const handleLogout = () => {
     const updatedSettings = {
@@ -418,7 +451,7 @@ export default function Settings() {
                       maxLength={5}
                     />
                     <p className="text-xs text-muted-foreground mt-1">
-                      Введите код из SMS сообщения
+                      Введите код из SMS сообщения или приложения Telegram
                     </p>
                   </div>
 
@@ -438,6 +471,21 @@ export default function Settings() {
                       Отмена
                     </Button>
                   </div>
+
+                  <Button
+                    variant="secondary"
+                    onClick={handleResendCode}
+                    className="w-full"
+                    disabled={loading}
+                  >
+                    {loading ? 'Отправка...' : 'Отправить код повторно (SMS)'}
+                  </Button>
+
+                  <Alert>
+                    <AlertDescription className="text-xs text-muted-foreground">
+                      Если код не приходит, нажмите кнопку выше. Telegram обычно отправляет повторный код как SMS.
+                    </AlertDescription>
+                  </Alert>
                 </>
               ) : authStep === 'password' ? (
                 // Шаг 3: Ввод 2FA пароля

@@ -131,6 +131,63 @@ router.post('/start', async (req, res) => {
 })
 
 /**
+ * Шаг 1.5: Повторно отправить код (обычно приходит как SMS)
+ * Используется, если первый код не пришёл
+ */
+router.post('/resend-code', async (req, res) => {
+  try {
+    const { sessionId } = req.body
+
+    if (!sessionId) {
+      return res.status(400).json({
+        error: 'sessionId обязателен',
+      })
+    }
+
+    const authSession = authSessions.get(sessionId)
+    if (!authSession) {
+      return res.status(404).json({
+        error: 'Сессия не найдена или истекла',
+      })
+    }
+
+    console.log('📱 Повторная отправка кода для:', authSession.phone)
+
+    // Используем resendCode - Telegram обычно отправляет SMS при повторном запросе
+    const result = await authSession.client.invoke(
+      new (require('telegram/tl').Api.auth.ResendCode)({
+        phoneNumber: authSession.phone,
+        phoneCodeHash: authSession.phoneCodeHash,
+      })
+    )
+
+    console.log('✓ Код повторно отправлен')
+    console.log('📄 Детали повторного ответа:', JSON.stringify({
+      phoneCodeHash: result.phoneCodeHash,
+      type: result.type?.__constructor || result.type?.className,
+    }))
+
+    // Обновляем phoneCodeHash если Telegram вернул новый
+    if (result.phoneCodeHash) {
+      authSession.phoneCodeHash = result.phoneCodeHash
+    }
+
+    return res.json({
+      success: true,
+      message: 'Код отправлен повторно. Проверьте SMS.',
+      phoneCodeHash: result.phoneCodeHash || authSession.phoneCodeHash,
+    })
+  } catch (error: any) {
+    console.error('✗ Ошибка повторной отправки кода:', error)
+
+    return res.status(500).json({
+      error: 'Не удалось повторно отправить код',
+      details: error.message,
+    })
+  }
+})
+
+/**
  * Шаг 2: Подтвердить SMS код
  * Может вернуть:
  * - success: true - аутентификация успешна
