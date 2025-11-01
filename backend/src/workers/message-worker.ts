@@ -108,25 +108,8 @@ async function processMessageJob(job: PgBoss.Job<SendMessageJobData>, boss: PgBo
         })
         .eq('id', jobId);
 
-      // Update channel error count
-      const { data: channel } = await supabase
-        .from('channels')
-        .select('error_count')
-        .eq('id', channelId)
-        .single();
-
-      if (channel) {
-        const newErrorCount = channel.error_count + 1;
-
-        await supabase
-          .from('channels')
-          .update({
-            error_count: newErrorCount,
-            last_error: error.message,
-            is_active: newErrorCount >= 5 ? false : undefined
-          })
-          .eq('id', channelId);
-      }
+      // Note: Channel error tracking removed in Feature 004
+      // Channels no longer have error_count or last_error fields
 
       await updateCampaignProgress(campaignId);
     }

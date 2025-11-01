@@ -7,6 +7,9 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
+import multer from 'multer';
+import { Readable } from 'stream';
+import * as readline from 'readline';
 import { channelService } from '../services/channel-service';
 import { validate, validateMultiple } from '../middleware/validate';
 import { authenticate } from '../middleware/auth';
@@ -17,6 +20,25 @@ import {
   channelIdSchema,
   checkUsernameSchema,
 } from '../types/channel-validation';
+import { supabase } from '../lib/supabase';
+
+// Configure multer for file upload (memory storage)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB max
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'application/x-ndjson' ||
+        file.mimetype === 'application/jsonl' ||
+        file.originalname.endsWith('.jsonl') ||
+        file.originalname.endsWith('.ndjson')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only JSONL files are allowed'));
+    }
+  },
+});
 
 const router = Router();
 
@@ -217,6 +239,150 @@ router.delete(
         });
       }
 
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /api/channels/import
+ * Import channels from JSONL file
+ */
+router.post(
+  '/import',
+  upload.single('file'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId = req.user?.id;
+      console.log('📥 Import started by user:', userId);
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+
+      console.log('📄 File received:', req.file.originalname, 'Size:', req.file.size);
+
+      let imported = 0;
+      let updated = 0;
+      let skipped = 0;
+      let errors = 0;
+      const errorMessages: string[] = [];
+
+      // Create readable stream from buffer
+      const stream = Readable.from(req.file.buffer.toString('utf-8').split('\n'));
+      const rl = readline.createInterface({
+        input: stream,
+        crlfDelay: Infinity,
+      });
+
+      for await (const line of rl) {
+        if (!line.trim()) continue; // Skip empty lines
+
+        try {
+          const record = JSON.parse(line);
+          console.log('🔄 Processing:', record.username);
+
+          // Пропускаем записи без username
+          if (!record.username || record.username === 'unknown') {
+            skipped++;
+            continue;
+          }
+
+          // Parse scraped content if present
+          let scrapedData = null;
+          if (record.scraped_content) {
+            try {
+              scrapedData = JSON.parse(record.scraped_content);
+            } catch (e) {
+              // Ignore scraped_content parse errors
+            }
+          }
+
+          // Extract data
+          const username = record.username.startsWith('@') ? record.username : `@${record.username}`;
+          const title = scrapedData?.title || null;
+          const name = record.category || username; // Use category as name
+          const tgstat_url = record.tgstat_url || null;
+          const telegram_links = scrapedData?.links || [];
+
+          // Check if channel exists (by username and user_id)
+          const { data: existing } = await supabase
+            .from('channels')
+            .select('id, updated_at')
+            .eq('username', username)
+            .eq('user_id', userId)
+            .single();
+
+          if (existing) {
+            // Update existing channel
+            console.log('  ↻ Updating existing channel:', username);
+            const { error } = await supabase
+              .from('channels')
+              .update({
+                name,
+                title,
+                tgstat_url,
+                telegram_links,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', existing.id);
+
+            if (error) {
+              console.error('  ✗ Update error:', error);
+              errors++;
+              errorMessages.push(`Error updating ${username}: ${error.message}`);
+            } else {
+              console.log('  ✓ Updated:', username);
+              updated++;
+            }
+          } else {
+            // Create new channel
+            console.log('  + Creating new channel:', username);
+            const { error } = await supabase
+              .from('channels')
+              .insert({
+                user_id: userId,
+                name,
+                username,
+                title,
+                tgstat_url,
+                telegram_links,
+                status: 'active',
+              });
+
+            if (error) {
+              console.error('  ✗ Insert error:', error);
+              errors++;
+              errorMessages.push(`Error importing ${username}: ${error.message}`);
+            } else {
+              console.log('  ✓ Imported:', username);
+              imported++;
+            }
+          }
+        } catch (error: any) {
+          console.error('  ✗ Line processing error:', error.message);
+          errors++;
+          errorMessages.push(`Error processing line: ${error.message}`);
+        }
+      }
+
+      console.log('✅ Import completed:', { imported, updated, skipped, errors });
+
+      res.status(200).json({
+        success: true,
+        stats: {
+          imported,
+          updated,
+          skipped,
+          errors,
+        },
+        errorMessages: errorMessages.slice(0, 10), // Return first 10 errors
+      });
+    } catch (error) {
       next(error);
     }
   }

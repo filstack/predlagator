@@ -1,6 +1,8 @@
 // backend/src/api/batches.ts
 import { Router } from 'express';
+import { randomUUID } from 'crypto';
 import { getSupabase } from '../lib/supabase';
+import { convertSortBy } from '../lib/case-converter';
 import { validate } from '../middleware/validate';
 import { auditLoggerMiddleware } from '../middleware/audit-logger';
 import {
@@ -14,14 +16,15 @@ const router = Router();
 // GET /api/batches - Список всех батчей с фильтрами
 router.get('/', validate(batchQuerySchema, 'query'), async (req, res, next) => {
   try {
-    const { search, page = 1, limit = 20, sortBy = 'created_at', sortOrder = 'desc' } = req.query as any;
+    const { search, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = req.query as any;
     const supabase = getSupabase();
+    const sortBySnake = convertSortBy(sortBy, 'created_at');
 
     let query = supabase
       .from('batches')
       .select(`
         *,
-        created_by:users!batches_created_by_id_fkey(id, username, role)
+        created_by:users(id, username, role)
       `, { count: 'exact' });
 
     if (search) {
@@ -29,7 +32,7 @@ router.get('/', validate(batchQuerySchema, 'query'), async (req, res, next) => {
     }
 
     query = query
-      .order(sortBy, { ascending: sortOrder === 'asc' })
+      .order(sortBySnake, { ascending: sortOrder === 'asc' })
       .range((page - 1) * limit, page * limit - 1);
 
     const { data: batches, error, count } = await query;
@@ -55,14 +58,12 @@ router.get('/:id', async (req, res, next) => {
   try {
     const supabase = getSupabase();
 
+    // Получаем batch
     const { data: batch, error } = await supabase
       .from('batches')
       .select(`
         *,
-        created_by:users!batches_created_by_id_fkey(id, username, role),
-        channels:batch_channels(
-          channel:channels(id, username, category, title, member_count, is_active)
-        )
+        created_by:users(id, username, role)
       `)
       .eq('id', req.params.id)
       .single();
@@ -72,13 +73,25 @@ router.get('/:id', async (req, res, next) => {
       return res.status(404).json({ error: 'Batch not found' });
     }
 
-    // Преобразуем структуру для обратной совместимости
-    const formattedBatch = {
-      ...batch,
-      channels: batch.channels?.map((bc: any) => bc.channel) || []
-    };
+    // Получаем связанные каналы напрямую
+    const { data: batchChannels } = await supabase
+      .from('batch_channels')
+      .select('channel_id')
+      .eq('batch_id', req.params.id);
 
-    res.json(formattedBatch);
+    if (batchChannels && batchChannels.length > 0) {
+      const channelIds = batchChannels.map((bc: any) => bc.channel_id);
+      const { data: channels } = await supabase
+        .from('channels')
+        .select('id, username, name, title, status')
+        .in('id', channelIds);
+
+      batch.channels = channels || [];
+    } else {
+      batch.channels = [];
+    }
+
+    res.json(batch);
   } catch (error) {
     next(error);
   }
@@ -92,6 +105,7 @@ router.post(
   async (req, res, next) => {
     try {
       const { name, description, channelIds } = req.body;
+      console.log('🔍 Creating batch with:', { name, description, channelIds, channelIdsLength: channelIds?.length });
       const supabase = getSupabase();
 
       // Get user ID from auth or use first available user
@@ -105,17 +119,18 @@ router.post(
       }
 
       // Создаем батч
-      const { data: batch, error: createError } = await supabase
+      const { data: batch, error: createError} = await supabase
         .from('batches')
         .insert({
+          id: randomUUID(),
           name,
-          description,
+          description: description || null,
           created_by_id: userId,
           channel_count: channelIds?.length || 0,
         })
         .select(`
           *,
-          created_by:users!batches_created_by_id_fkey(id, username)
+          created_by:users(id, username)
         `)
         .single();
 
@@ -132,15 +147,22 @@ router.post(
           .from('batch_channels')
           .insert(batchChannelsData);
 
-        if (linkError) throw linkError;
+        if (linkError) {
+          console.error('❌ Error linking channels:', linkError);
+          throw linkError;
+        }
 
-        // Получаем связанные каналы
-        const { data: channels } = await supabase
-          .from('batch_channels')
-          .select('channel:channels(id, username)')
-          .eq('batch_id', batch.id);
+        // Получаем связанные каналы напрямую (без FK relationship)
+        const { data: channelRecords, error: channelsError } = await supabase
+          .from('channels')
+          .select('id, username')
+          .in('id', channelIds);
 
-        batch.channels = channels?.map((bc: any) => bc.channel) || [];
+        if (channelsError) {
+          console.error('❌ Error fetching channels:', channelsError);
+        }
+
+        batch.channels = channelRecords || [];
       }
 
       res.status(201).json(batch);
@@ -192,15 +214,17 @@ router.patch(
           await supabase
             .from('batch_channels')
             .insert(batchChannelsData);
+
+          // Получаем обновленные каналы напрямую
+          const { data: channels } = await supabase
+            .from('channels')
+            .select('id, username')
+            .in('id', channelIds);
+
+          batch.channels = channels || [];
+        } else {
+          batch.channels = [];
         }
-
-        // Получаем обновленные каналы
-        const { data: channels } = await supabase
-          .from('batch_channels')
-          .select('channel:channels(id, username)')
-          .eq('batch_id', req.params.id);
-
-        batch.channels = channels?.map((bc: any) => bc.channel) || [];
       }
 
       res.json(batch);

@@ -1,0 +1,50 @@
+name: Deploy to vedbot.ru
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Deploy to server
+        uses: appleboy/ssh-action@master
+        with:
+          host: 217.26.24.162
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          # Или используйте SSH ключ:
+          # key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            cd /var/www/predlagator
+            git pull origin main
+
+            # Backend
+            cd backend
+            npm install --production
+            npm run build
+
+            # Frontend
+            cd ../frontend
+            npm install
+            npm run build
+
+            # Restart PM2
+            cd ..
+            pm2 restart all
+
+            echo "✅ Deployment completed!"
+            pm2 status

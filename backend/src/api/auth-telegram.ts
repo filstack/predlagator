@@ -12,9 +12,14 @@ interface AuthSession {
   apiId: number
   apiHash: string
   phone: string
+  sessionString: string // Добавляем сохранение session string
 }
 
 const authSessions = new Map<string, AuthSession>()
+
+// Кэш базовых сессий по телефону (для переиспользования auth_key)
+// Это решает проблему создания множества auth_key при частых запросах
+const phoneSessionCache = new Map<string, string>()
 
 /**
  * Шаг 1: Начать процесс аутентификации
@@ -32,8 +37,15 @@ router.post('/start', async (req, res) => {
 
     console.log('🔐 Начало аутентификации Telegram для:', phone)
 
-    // Создаём новую пустую сессию
-    const session = new StringSession('')
+    // Проверяем, есть ли кэшированная сессия для этого номера
+    // Это позволяет переиспользовать auth_key и избежать блокировки Telegram
+    const cachedSessionString = phoneSessionCache.get(phone) || ''
+    console.log(
+      `📦 Используем ${cachedSessionString ? 'кэшированную' : 'новую'} сессию для`,
+      phone
+    )
+
+    const session = new StringSession(cachedSessionString)
     const client = new TelegramClient(session, parseInt(apiId), apiHash, {
       connectionRetries: 5,
     })
@@ -41,14 +53,30 @@ router.post('/start', async (req, res) => {
     // Подключаемся
     await client.connect()
 
-    // Отправляем код на телефон
-    const result = await client.sendCode(
-      {
-        apiId: parseInt(apiId),
-        apiHash: apiHash,
-      },
-      phone
-    )
+    // Сохраняем session string после первого подключения (для переиспользования auth_key)
+    const currentSessionString = client.session.save() as unknown as string
+    phoneSessionCache.set(phone, currentSessionString)
+
+    // Отправляем код на телефон с таймаутом
+    console.log('📞 Отправка запроса кода на Telegram API...')
+    const result = await Promise.race([
+      client.sendCode(
+        {
+          apiId: parseInt(apiId),
+          apiHash: apiHash,
+        },
+        phone
+      ),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Timeout: Telegram не отвечает')), 30000)
+      ),
+    ]) as any
+
+    if (!result || !result.phoneCodeHash) {
+      throw new Error('Telegram API не вернул phoneCodeHash')
+    }
+
+    console.log('✓ Telegram API успешно обработал запрос кода')
 
     // Создаём уникальный ID сессии
     const sessionId = `${Date.now()}_${Math.random().toString(36).substring(7)}`
@@ -60,6 +88,7 @@ router.post('/start', async (req, res) => {
       apiId: parseInt(apiId),
       apiHash,
       phone,
+      sessionString: currentSessionString,
     })
 
     // Проверяем, как был отправлен код
@@ -79,6 +108,10 @@ router.post('/start', async (req, res) => {
     })
   } catch (error: any) {
     console.error('✗ Ошибка начала аутентификации:', error)
+
+    // Очищаем кэш сессии при ошибке
+    phoneSessionCache.delete(phone)
+    console.log('🗑️  Кэш сессии очищен для', phone)
 
     return res.status(500).json({
       error: 'Не удалось начать аутентификацию',
@@ -131,6 +164,9 @@ router.post('/verify-code', async (req, res) => {
       // Отключаемся и удаляем временную сессию
       await authSession.client.disconnect()
       authSessions.delete(sessionId)
+
+      // Очищаем кэш сессии для этого номера после успешной аутентификации
+      phoneSessionCache.delete(authSession.phone)
 
       console.log('✓ Аутентификация успешна для:', authSession.phone)
 
@@ -218,6 +254,9 @@ router.post('/verify-password', async (req, res) => {
     await authSession.client.disconnect()
     authSessions.delete(sessionId)
 
+    // Очищаем кэш сессии для этого номера после успешной аутентификации
+    phoneSessionCache.delete(authSession.phone)
+
     console.log('✓ 2FA аутентификация успешна для:', authSession.phone)
 
     return res.json({
@@ -241,6 +280,39 @@ router.post('/verify-password', async (req, res) => {
 })
 
 /**
+ * Очистить кэш сессий для номера телефона
+ */
+router.post('/clear-cache', async (req, res) => {
+  try {
+    const { phone } = req.body
+
+    if (phone) {
+      phoneSessionCache.delete(phone)
+      console.log('🗑️  Кэш сессии очищен для:', phone)
+      return res.json({
+        success: true,
+        message: `Кэш очищен для ${phone}`,
+      })
+    } else {
+      // Очистить весь кэш
+      phoneSessionCache.clear()
+      console.log('🗑️  Весь кэш сессий очищен')
+      return res.json({
+        success: true,
+        message: 'Весь кэш очищен',
+      })
+    }
+  } catch (error: any) {
+    console.error('✗ Ошибка очистки кэша:', error)
+
+    return res.status(500).json({
+      error: 'Ошибка очистки кэша',
+      details: error.message,
+    })
+  }
+})
+
+/**
  * Отменить процесс аутентификации
  */
 router.post('/cancel', async (req, res) => {
@@ -257,6 +329,8 @@ router.post('/cancel', async (req, res) => {
     if (authSession) {
       await authSession.client.disconnect()
       authSessions.delete(sessionId)
+      // Очищаем кэш сессии при отмене
+      phoneSessionCache.delete(authSession.phone)
       console.log('✗ Аутентификация отменена для:', authSession.phone)
     }
 
@@ -430,7 +504,9 @@ setInterval(() => {
     if (sessionAge > 10 * 60 * 1000) {
       authSession.client.disconnect().catch(() => {})
       authSessions.delete(sessionId)
-      console.log('🗑️  Удалена устаревшая сессия аутентификации')
+      // Очищаем кэш сессии при автоматической очистке
+      phoneSessionCache.delete(authSession.phone)
+      console.log('🗑️  Удалена устаревшая сессия аутентификации для:', authSession.phone)
     }
   }
 }, 10 * 60 * 1000)

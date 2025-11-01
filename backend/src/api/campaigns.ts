@@ -1,8 +1,8 @@
 // backend/src/api/campaigns.ts
 import { Router } from 'express';
+import { randomUUID } from 'crypto';
 import { getSupabase } from '../lib/supabase';
-import { getPgBoss } from '../queues/pg-boss-queue';
-import { QUEUE_NAMES } from '../types/queue-jobs';
+import { convertSortBy } from '../lib/case-converter';
 import { getCampaignWithRelations, getCampaignStats, createJobsForCampaign } from '../lib/supabase-helpers';
 import { validate } from '../middleware/validate';
 import { auditLoggerMiddleware } from '../middleware/audit-logger';
@@ -18,8 +18,9 @@ const router = Router();
 // GET /api/campaigns - Список всех кампаний с фильтрами
 router.get('/', validate(campaignQuerySchema, 'query'), async (req, res, next) => {
   try {
-    const { status, mode, batchId, search, page = 1, limit = 20, sortBy = 'created_at', sortOrder = 'desc' } = req.query as any;
+    const { status, mode, batchId, search, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = req.query as any;
     const supabase = getSupabase();
+    const sortBySnake = convertSortBy(sortBy, 'created_at');
 
     let query = supabase
       .from('campaigns')
@@ -27,7 +28,7 @@ router.get('/', validate(campaignQuerySchema, 'query'), async (req, res, next) =
         *,
         batch:batches(id, name, channel_count),
         template:templates(id, name),
-        created_by:users!campaigns_created_by_id_fkey(id, username)
+        created_by:users(id, username)
       `, { count: 'exact' });
 
     // Фильтры
@@ -38,7 +39,7 @@ router.get('/', validate(campaignQuerySchema, 'query'), async (req, res, next) =
 
     // Сортировка и пагинация
     query = query
-      .order(sortBy, { ascending: sortOrder === 'asc' })
+      .order(sortBySnake, { ascending: sortOrder === 'asc' })
       .range((page - 1) * limit, page * limit - 1);
 
     const { data: campaigns, error, count } = await query;
@@ -105,16 +106,30 @@ router.post(
         userId = firstUser.id;
       }
 
-      // Получаем количество активных каналов в батче
+      // Получаем количество активных каналов в батче (без FK relationship)
+      // 1. Получаем все channel_id из batch_channels
       const { data: batchChannels, error: batchError } = await supabase
         .from('batch_channels')
-        .select('channel:channels!inner(id, is_active)')
-        .eq('batch_id', batchId)
-        .eq('channels.is_active', true);
+        .select('channel_id')
+        .eq('batch_id', batchId);
 
       if (batchError) throw batchError;
 
-      const activeChannelCount = batchChannels?.length || 0;
+      if (!batchChannels || batchChannels.length === 0) {
+        return res.status(400).json({ error: 'No channels in batch' });
+      }
+
+      // 2. Получаем только активные каналы
+      const channelIds = batchChannels.map(bc => bc.channel_id);
+      const { data: activeChannels, error: channelsError } = await supabase
+        .from('channels')
+        .select('id, status')
+        .in('id', channelIds)
+        .eq('status', 'active');
+
+      if (channelsError) throw channelsError;
+
+      const activeChannelCount = activeChannels?.length || 0;
 
       if (activeChannelCount === 0) {
         return res.status(400).json({ error: 'No active channels in batch' });
@@ -124,6 +139,7 @@ router.post(
       const { data: campaign, error: createError } = await supabase
         .from('campaigns')
         .insert({
+          id: randomUUID(),
           name,
           description,
           batch_id: batchId,
@@ -285,31 +301,10 @@ router.post(
 
       if (updateError) throw updateError;
 
-      // Respond immediately
-      res.json(updated);
+      // Polling worker будет автоматически обрабатывать campaigns со статусом RUNNING
+      console.log(`✅ Campaign ${campaignId} статус изменен на ${newStatus}`);
 
-      // Queue integration (non-blocking)
-      setImmediate(async () => {
-        try {
-          if (action === 'start') {
-            const boss = await getPgBoss();
-            await boss.send(
-              QUEUE_NAMES.START_CAMPAIGN,
-              {
-                campaignId,
-                userId: (req as any).user?.id
-              },
-              {
-                singletonKey: campaignId
-              }
-            );
-            console.log(`✅ Campaign ${campaignId} added to pg-boss queue`);
-          }
-          // TODO: Implement pause/cancel logic
-        } catch (queueError) {
-          console.error('Queue operation error:', queueError);
-        }
-      });
+      res.json(updated);
     } catch (error) {
       next(error);
     }

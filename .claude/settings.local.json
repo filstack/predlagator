@@ -32,7 +32,13 @@
       "Bash(node test-channels-api.mjs:*)",
       "Bash(node check-table.mjs:*)",
       "Bash(node test-channels-db.mjs:*)",
-      "Bash(git reset:*)"
+      "Bash(git reset:*)",
+      "Bash(node verify-telegram-api.mjs)",
+      "mcp__ide__getDiagnostics",
+      "Bash(node -e \"console.log(''Запуск verify-telegram-api.mjs для проверки...'')\")",
+      "Bash(timeout /t 2 /nobreak)",
+      "Bash(node test-telegram-connection.mjs)",
+      "Bash(netstat:*)"
     ],
     "deny": [],
     "ask": []
