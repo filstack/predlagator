@@ -49,6 +49,13 @@ router.post('/start', async (req, res) => {
     const session = new StringSession(cachedSessionString)
     const client = new TelegramClient(session, parseInt(apiId), apiHash, {
       connectionRetries: 5,
+      proxy: {
+        socksType: 5,
+        ip: 'res.geonix.com',
+        port: 10000,
+        username: '20a770993aaa6560',
+        password: '7GLsUS60',
+      }
     })
 
     // Подключаемся
