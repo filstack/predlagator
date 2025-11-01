@@ -4,9 +4,9 @@ import { z } from 'zod'
 // Media type enum matching Prisma
 export const mediaTypeEnum = z.enum(['PHOTO', 'VIDEO', 'DOCUMENT'])
 
-// Full template schema matching Prisma model
+// Full template schema matching Supabase model
 export const templateSchema = z.object({
-  id: z.string().cuid(),
+  id: z.string().uuid(),
   name: z.string().min(1),
   content: z.string().min(1),
   description: z.string().nullable().optional(),

@@ -1,11 +1,14 @@
 // frontend/src/stores/channel-store.ts
 import { create } from 'zustand'
-import { apiClient } from '@/lib/api-client'
+import { apiClient } from '../lib/api-client'
 import type {
   Channel,
-  CreateChannelInput,
-  ChannelQuery,
-} from '@shared/schemas'
+  CreateChannelRequest,
+  UpdateChannelRequest,
+  ListChannelsQuery,
+  ListChannelsResponse,
+  CheckUsernameResponse,
+} from '../types/channel'
 
 interface ChannelState {
   channels: Channel[]
@@ -16,11 +19,12 @@ interface ChannelState {
   error: string | null
 
   // Actions
-  fetchChannels: (query?: ChannelQuery) => Promise<void>
-  createChannel: (data: CreateChannelInput) => Promise<Channel>
-  updateChannel: (id: string, data: Partial<Channel>) => Promise<Channel>
+  fetchChannels: (query?: ListChannelsQuery) => Promise<void>
+  createChannel: (data: CreateChannelRequest) => Promise<Channel>
+  updateChannel: (id: string, data: UpdateChannelRequest) => Promise<Channel>
   deleteChannel: (id: string) => Promise<void>
   selectChannel: (channel: Channel | null) => void
+  checkUsernameAvailability: (username: string, excludeChannelId?: string) => Promise<CheckUsernameResponse>
   clearError: () => void
 }
 
@@ -32,18 +36,10 @@ export const useChannelStore = create<ChannelState>((set, get) => ({
   isLoading: false,
   error: null,
 
-  fetchChannels: async (query?: ChannelQuery) => {
+  fetchChannels: async (query?: ListChannelsQuery) => {
     set({ isLoading: true, error: null })
     try {
-      const response = await apiClient.get<{
-        data: Channel[]
-        pagination: {
-          page: number
-          limit: number
-          total: number
-          pages: number
-        }
-      }>('/channels', query)
+      const response = await apiClient.get<ListChannelsResponse>('/channels', query)
       set({
         channels: response.data || [],
         totalCount: response.pagination?.total || 0,
@@ -59,12 +55,13 @@ export const useChannelStore = create<ChannelState>((set, get) => ({
     }
   },
 
-  createChannel: async (data: CreateChannelInput) => {
+  createChannel: async (data: CreateChannelRequest) => {
     set({ isLoading: true, error: null })
     try {
       const channel = await apiClient.post<Channel>('/channels', data)
       set((state) => ({
         channels: [channel, ...state.channels],
+        totalCount: state.totalCount + 1,
         isLoading: false,
       }))
       return channel
@@ -77,7 +74,7 @@ export const useChannelStore = create<ChannelState>((set, get) => ({
     }
   },
 
-  updateChannel: async (id: string, data: Partial<Channel>) => {
+  updateChannel: async (id: string, data: UpdateChannelRequest) => {
     set({ isLoading: true, error: null })
     try {
       const updated = await apiClient.put<Channel>(`/channels/${id}`, data)
@@ -118,6 +115,19 @@ export const useChannelStore = create<ChannelState>((set, get) => ({
 
   selectChannel: (channel: Channel | null) => {
     set({ selectedChannel: channel })
+  },
+
+  checkUsernameAvailability: async (username: string, excludeChannelId?: string) => {
+    try {
+      const params = excludeChannelId ? { exclude_channel_id: excludeChannelId } : {}
+      const response = await apiClient.get<CheckUsernameResponse>(
+        `/channels/check-username/${encodeURIComponent(username)}`,
+        params
+      )
+      return response
+    } catch (error: any) {
+      throw error
+    }
   },
 
   clearError: () => set({ error: null }),

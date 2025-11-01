@@ -2,7 +2,7 @@
 import { z } from 'zod'
 
 export const channelSchema = z.object({
-  id: z.string().cuid(),
+  id: z.string().uuid(),
   username: z.string().min(1),
   category: z.string().min(1),
   tgstatUrl: z.string().url().nullable().optional(),

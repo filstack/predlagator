@@ -1,20 +1,28 @@
 // frontend/src/components/layout/MainLayout.tsx
-import { Link, Outlet, useLocation } from 'react-router-dom'
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Button } from '../ui/button'
+import { useAuthStore } from '@/stores/auth-store'
+import { LogOut, User } from 'lucide-react'
 
 export function MainLayout() {
   const location = useLocation()
+  const navigate = useNavigate()
+  const { user, logout } = useAuthStore()
+
+  const handleLogout = () => {
+    logout()
+    navigate('/login')
+  }
 
   const isActive = (path: string) => {
     return location.pathname === path
   }
 
   const navItems = [
-    { path: '/', label: 'Channels' },
+    { path: '/', label: 'Каналы' },
     { path: '/batches', label: 'Batches' },
-    { path: '/templates', label: 'Templates' },
-    { path: '/campaigns', label: 'Campaigns' },
-    { path: '/test', label: 'Test' },
+    { path: '/templates', label: 'Шаблоны' },
+    { path: '/campaigns', label: 'Рассылки' },
   ]
 
   return (
@@ -45,12 +53,26 @@ export function MainLayout() {
             </nav>
           </div>
           <div className="ml-auto flex items-center space-x-4">
-            {/* Placeholder for future user menu */}
+            {user && (
+              <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+                <User className="h-4 w-4" />
+                <span>{user.username}</span>
+              </div>
+            )}
             <Link to="/settings">
               <Button variant="ghost" size="sm">
                 Settings
               </Button>
             </Link>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleLogout}
+              className="text-destructive hover:text-destructive"
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              Выход
+            </Button>
           </div>
         </div>
       </header>

@@ -208,20 +208,22 @@ export default function Settings() {
     setPassword('')
     setSessionId('')
 
-    // Обновляем session string на бэкенде
+    // Сохраняем все credentials на бэкенде (в .env файл)
     try {
-      await apiClient.post('/auth-telegram/update-session', {
+      await apiClient.post('/auth-telegram/save-credentials', {
+        apiId: telegramSettings.apiId,
+        apiHash: telegramSettings.apiHash,
         sessionString: data.sessionString,
       })
-      console.log('✓ Session string обновлён на бэкенде')
+      console.log('✓ Telegram credentials сохранены на бэкенде в .env')
     } catch (error) {
-      console.error('Ошибка обновления session на бэкенде:', error)
+      console.error('Ошибка сохранения credentials на бэкенде:', error)
       // Не показываем ошибку пользователю, т.к. аутентификация прошла успешно
     }
 
     toast({
       title: 'Успех!',
-      description: `Добро пожаловать, ${data.user.firstName}!`,
+      description: `Добро пожаловать, ${data.user.firstName}! Настройки сохранены в .env файл.`,
     })
   }
 

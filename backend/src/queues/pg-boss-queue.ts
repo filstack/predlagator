@@ -28,9 +28,10 @@ export async function getPgBoss(): Promise<PgBoss> {
     ssl: {
       rejectUnauthorized: false, // Accept Supabase self-signed certificates
     },
-    archiveCompletedAfterSeconds: 604800, // 7 days
-    retentionDays: 30, // Delete archived jobs after 30 days
-    monitorStateIntervalSeconds: 60, // Monitor queue health every 60s
+    // NOTE: pg-boss v9 doesn't support these options (v10+ only)
+    // archiveCompletedAfterSeconds: 604800,
+    // retentionDays: 30,
+    // monitorStateIntervalSeconds: 60,
   });
 
   // Error handling

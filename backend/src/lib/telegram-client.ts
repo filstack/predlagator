@@ -7,8 +7,8 @@ import * as fs from 'fs/promises'
 import * as path from 'path'
 
 /**
- * Telegram :;85=B 4;O @01>BK A API
- * A?>;L7C5B GramJS (telegram npm package)
+ * Telegram клиент для работы с API
+ * Использует GramJS (telegram npm package)
  */
 class TelegramClientManager {
   private client: TelegramClient | null = null
@@ -20,36 +20,36 @@ class TelegramClientManager {
   }
 
   /**
-   * =8F80;878@>20BL 8 ?>4:;NG8BL :;85=B0
+   * Инициализировать и подключить клиента
    */
   async connect(): Promise<void> {
     if (this.client?.connected) {
-      console.log(' Telegram :;85=B C65 ?>4:;NG5=')
+      console.log('✓ Telegram клиент уже подключен')
       return
     }
 
     if (this.isConnecting) {
-      console.log('� >4:;NG5=85 : Telegram C65 2 ?@>F5AA5...')
+      console.log('⏳ Подключение к Telegram уже в процессе...')
       return
     }
 
     this.isConnecting = true
 
     try {
-      console.log('= >4:;NG5=85 : Telegram...')
+      console.log('🔌 Подключение к Telegram...')
 
       const apiId = parseInt(process.env.TELEGRAM_API_ID || '')
       const apiHash = process.env.TELEGRAM_API_HASH || ''
       const sessionString = process.env.TELEGRAM_SESSION || ''
 
       if (!apiId || !apiHash) {
-        throw new Error('TELEGRAM_API_ID 8 TELEGRAM_API_HASH 4>;6=K 1KBL CAB0=>2;5=K')
+        throw new Error('TELEGRAM_API_ID и TELEGRAM_API_HASH должны быть установлены')
       }
 
-      // !>7405< A5AA8N 87 AB@>:8
+      // Создаем сессию из строки
       const session = new StringSession(sessionString)
 
-      // !>7405< :;85=B0
+      // Создаем клиента
       this.client = new TelegramClient(session, apiId, apiHash, {
         connectionRetries: 5,
         retryDelay: 1000,
@@ -57,32 +57,46 @@ class TelegramClientManager {
         useWSS: false,
       })
 
-      // >4:;NG05<AO
+      // Подключаемся
       await this.client.connect()
 
-      console.log(' Telegram :;85=B CA?5H=> ?>4:;NG5=')
+      // Проверяем авторизацию
+      if (!sessionString) {
+        console.warn('⚠️ TELEGRAM_SESSION пуст - клиент НЕ авторизован!')
+        console.warn('   Используйте /api/auth-telegram/start для авторизации')
+        this.isConnecting = false
+        return
+      }
 
-      // >;CG05< 8=D>@<0F8N >1 0::0C=B5
-      const me = await this.client.getMe()
-      console.log(`   ::0C=B: ${me.firstName} (ID: ${me.id})`)
+      console.log('✓ Telegram клиент успешно подключен')
 
-      // !>E@0=O5< >1=>2;5==CN A5AA8N
-      const newSession = this.client.session.save()
-      if (newSession !== sessionString) {
-        console.log('=� !5AA8O >1=>2;5=0 (A>E@0=8B5 2 .env 5A;8 87<5=8;0AL)')
-        // TODO: 2B><0B8G5A:8 >1=>2;OBL .env 8;8 E@0=8BL 2
+      // Получаем информацию об аккаунте
+      try {
+        const me = await this.client.getMe()
+        console.log(`📱 Аккаунт: ${me.firstName} (ID: ${me.id})`)
+
+        // Сохраняем обновленную сессию
+        const newSession = this.client.session.save()
+        if (newSession !== sessionString) {
+          console.log('🔄 Сессия обновлена (сохраните в .env если изменилась)')
+        }
+      } catch (authError: any) {
+        console.error('❌ Клиент подключен, но НЕ авторизован:', authError.message)
+        console.error('   Используйте /api/auth-telegram/start для новой авторизации')
+        throw new Error('Telegram клиент не авторизован. Требуется повторная авторизация через /api/auth-telegram/start')
       }
 
       this.isConnecting = false
-    } catch (error) {
+    } catch (error: any) {
       this.isConnecting = false
-      console.error('L H81:0 ?>4:;NG5=8O : Telegram:', error)
+      console.error('❌ Ошибка подключения к Telegram:', error.message)
       throw error
     }
   }
 
   /**
-   * >;CG8BL 0:B82=>3> :;85=B0
+   * Получить активного клиента
+   * Автоматически подключается если не подключен
    */
   async getClient(): Promise<TelegramClient> {
     if (!this.client || !this.client.connected) {
@@ -90,32 +104,49 @@ class TelegramClientManager {
     }
 
     if (!this.client) {
-      throw new Error('5 C40;>AL ?>4:;NG8BLAO : Telegram')
+      throw new Error('Не удалось подключиться к Telegram')
+    }
+
+    // Дополнительная проверка: клиент подключен, но авторизован ли?
+    // Попробуем получить информацию о пользователе
+    try {
+      await this.client.getMe()
+    } catch (error: any) {
+      if (error.message.includes('AUTH_KEY_UNREGISTERED') ||
+          error.message.includes('SESSION_REVOKED') ||
+          error.message.includes('AUTH_KEY_DUPLICATED')) {
+        throw new Error(
+          'Telegram сессия невалидна или устарела. ' +
+          'Используйте /api/auth-telegram/start для повторной авторизации. ' +
+          `Детали: ${error.message}`
+        )
+      }
+      throw error
     }
 
     return this.client
   }
 
   /**
-   * B:;NG8BL :;85=B0
+   * Отключить клиента
    */
   async disconnect(): Promise<void> {
     if (this.client) {
       await this.client.disconnect()
       this.client = null
-      console.log('= Telegram :;85=B >B:;NG5=')
+      console.log('🔌 Telegram клиент отключен')
     }
   }
 
   /**
-   * @>25@8BL ?>4:;NG5=85
+   * Проверить подключение
    */
   isConnected(): boolean {
     return this.client?.connected || false
   }
 
   /**
-   * 5@5?>4:;NG8BLAO
+   * Переподключиться
    */
   async reconnect(): Promise<void> {
     await this.disconnect()
@@ -123,7 +154,7 @@ class TelegramClientManager {
   }
 
   /**
-   * 1=>28BL session string 8 ?5@5?>4:;NG8BLAO
+   * Обновить session string и переподключиться
    */
   async updateSession(newSessionString: string): Promise<void> {
     await this.disconnect()
@@ -132,14 +163,14 @@ class TelegramClientManager {
   }
 }
 
-// !8=3;B>= M:75<?;O@
+// Синглтон экземпляр
 export const telegramClient = new TelegramClientManager()
 
-// 2B><0B8G5A:>5 ?>4:;NG5=85 >B:;NG5=> - ?>4:;NG5=85 ?@>87>9451 ?@8 ?5@2>< 2K7>25 getClient()
-// MB> @5H05B ?@>1;5<C AUTH_KEY_DUPLICATED :>340 70?CI5=K =5A:>;L:> ?@>F5AA>2 (API server + Worker)
+// Автоматическое подключение отключено - подключение произойдёт при первом вызове getClient()
+// Это решает проблему AUTH_KEY_DUPLICATED когда запущены несколько процессов (API server + Worker)
 // if (process.env.NODE_ENV !== 'test') {
 //   telegramClient.connect().catch((error) => {
-//     console.error('L 5 C40;>AL ?>4:;NG8BLAO : Telegram ?@8 70?CA:5:', error)
+//     console.error('❌ Не удалось подключиться к Telegram при запуске:', error)
 //   })
 // }
 

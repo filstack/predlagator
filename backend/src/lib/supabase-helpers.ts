@@ -3,6 +3,7 @@
  * Common query patterns for API endpoints
  */
 
+import { randomUUID } from 'crypto';
 import { getSupabase } from './supabase';
 
 /**
@@ -17,7 +18,7 @@ export async function getCampaignWithRelations(campaignId: string) {
       *,
       batch:batches(*),
       template:templates(*),
-      created_by:users!campaigns_created_by_id_fkey(id, username, role),
+      created_by:users(id, username, role),
       jobs(*)
     `)
     .eq('id', campaignId)
@@ -53,24 +54,30 @@ export async function getCampaignStats(campaignId: string) {
 export async function createJobsForCampaign(campaignId: string, batchId: string) {
   const supabase = getSupabase();
 
-  // Get active channels from batch
-  const { data: batchChannels } = await supabase
+  // Get active channels from batch (without FK relationship)
+  // 1. Get all channel IDs from batch_channels
+  const { data: batchChannels, error: batchError } = await supabase
     .from('batch_channels')
-    .select(`
-      channel:channels(id, is_active)
-    `)
+    .select('channel_id')
     .eq('batch_id', batchId);
 
-  if (!batchChannels) return 0;
+  if (batchError) throw batchError;
+  if (!batchChannels || batchChannels.length === 0) return 0;
 
-  const activeChannels = batchChannels
-    .map((bc: any) => bc.channel)
-    .filter((ch: any) => ch?.is_active);
+  // 2. Get only active channels
+  const channelIds = batchChannels.map((bc: any) => bc.channel_id);
+  const { data: activeChannels, error: channelsError } = await supabase
+    .from('channels')
+    .select('id, status')
+    .in('id', channelIds)
+    .eq('status', 'active');
 
-  if (activeChannels.length === 0) return 0;
+  if (channelsError) throw channelsError;
+  if (!activeChannels || activeChannels.length === 0) return 0;
 
   // Create jobs
   const jobsData = activeChannels.map((channel: any) => ({
+    id: randomUUID(),
     campaign_id: campaignId,
     channel_id: channel.id,
     status: 'QUEUED'

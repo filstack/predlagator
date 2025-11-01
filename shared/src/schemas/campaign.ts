@@ -7,13 +7,13 @@ export const campaignStatusEnum = z.enum(['QUEUED', 'RUNNING', 'PAUSED', 'COMPLE
 // Campaign mode enum matching Prisma
 export const campaignModeEnum = z.enum(['TEST', 'LIVE'])
 
-// Full campaign schema matching Prisma model
+// Full campaign schema matching Supabase model
 export const campaignSchema = z.object({
-  id: z.string().cuid(),
+  id: z.string().uuid(),
   name: z.string().min(1),
   description: z.string().nullable().optional(),
-  batchId: z.string().cuid(),
-  templateId: z.string().cuid(),
+  batchId: z.string().uuid(),
+  templateId: z.string().uuid(),
   params: z.record(z.any()),
   mode: campaignModeEnum,
   deliveryRate: z.number().int().positive(),
@@ -25,15 +25,15 @@ export const campaignSchema = z.object({
   updatedAt: z.date(),
   startedAt: z.date().nullable().optional(),
   completedAt: z.date().nullable().optional(),
-  createdById: z.string().cuid(),
+  createdById: z.string().uuid(),
 })
 
 // Create campaign input schema
 export const createCampaignSchema = z.object({
   name: z.string().min(1, 'Campaign name is required').max(200, 'Name too long'),
   description: z.string().max(1000).optional(),
-  batchId: z.string().cuid('Invalid batch ID'),
-  templateId: z.string().cuid('Invalid template ID'),
+  batchId: z.string().uuid('Invalid batch ID'),
+  templateId: z.string().uuid('Invalid template ID'),
   params: z.record(z.any()).default({}),
   mode: campaignModeEnum.default('TEST'),
   deliveryRate: z.number().int().min(1).max(100).default(20),
@@ -59,8 +59,8 @@ export const campaignActionSchema = z.object({
 export const campaignQuerySchema = z.object({
   status: campaignStatusEnum.optional(),
   mode: campaignModeEnum.optional(),
-  batchId: z.string().cuid().optional(),
-  createdById: z.string().cuid().optional(),
+  batchId: z.string().uuid().optional(),
+  createdById: z.string().uuid().optional(),
   search: z.string().optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().min(1).max(100).default(50),
