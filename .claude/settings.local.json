@@ -40,7 +40,10 @@
       "Bash(node test-telegram-connection.mjs)",
       "Bash(netstat:*)",
       "Bash(git restore:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "WebSearch",
+      "WebFetch(domain:gram.js.org)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []

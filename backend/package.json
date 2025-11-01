@@ -25,6 +25,7 @@
     "jose": "^6.1.0",
     "multer": "^2.0.2",
     "pg-boss": "^9.0.3",
+    "socks-proxy-agent": "^8.0.5",
     "telegram": "^2.26.22",
     "tsx": "^4.20.6",
     "typescript": "5.3",

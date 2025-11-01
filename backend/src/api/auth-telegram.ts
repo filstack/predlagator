@@ -47,14 +47,21 @@ router.post('/start', async (req, res) => {
     )
 
     const session = new StringSession(cachedSessionString)
+
+    // SOCKS5 Proxy для обхода блокировки кодов на серверных IP
+    // IP: 185.162.130.86 (res.geonix.com)
+    console.log('🌐 Подключение через SOCKS5 прокси: 185.162.130.86:10000')
+
     const client = new TelegramClient(session, parseInt(apiId), apiHash, {
       connectionRetries: 5,
+      useWSS: false, // Отключаем WebSocket, используем TCP
       proxy: {
         socksType: 5,
-        ip: 'res.geonix.com',
+        ip: '185.162.130.86', // ВАЖНО: GramJS требует IP, а не hostname
         port: 10000,
         username: '20a770993aaa6560',
         password: '7GLsUS60',
+        timeout: 10,
       }
     })
 
