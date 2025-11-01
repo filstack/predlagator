@@ -59,14 +59,17 @@ router.post('/start', async (req, res) => {
     phoneSessionCache.set(phone, currentSessionString)
 
     // Отправляем код на телефон с таймаутом
-    console.log('📞 Отправка запроса кода на Telegram API...')
+    // ВАЖНО: forceSMS=true заставляет отправить SMS вместо кода через приложение
+    console.log('📞 Отправка запроса SMS кода на Telegram API...')
     const result = await Promise.race([
       client.sendCode(
         {
           apiId: parseInt(apiId),
           apiHash: apiHash,
         },
-        phone
+        phone,
+        undefined, // password (not needed for initial auth)
+        true // forceSMS - принудительно отправить SMS
       ),
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Timeout: Telegram не отвечает')), 30000)
