@@ -15,19 +15,26 @@ export async function getPgBoss(): Promise<PgBoss> {
     return bossInstance;
   }
 
-  const connectionString = process.env.SUPABASE_DIRECT_URL;
+  // Use separate database URL for pg-boss (local PostgreSQL on production)
+  // Falls back to SUPABASE_DIRECT_URL for local development
+  const connectionString = process.env.PGBOSS_DATABASE_URL || process.env.SUPABASE_DIRECT_URL;
 
   if (!connectionString) {
-    throw new Error('Missing SUPABASE_DIRECT_URL environment variable');
+    throw new Error('Missing PGBOSS_DATABASE_URL or SUPABASE_DIRECT_URL environment variable');
   }
+
+  console.log('🔌 Connecting pg-boss to:', connectionString.includes('localhost') ? 'localhost PostgreSQL' : 'Supabase');
 
   const boss = new PgBoss({
     connectionString,
     schema: 'pgboss', // Separate schema for pg-boss tables
     max: 5, // Connection pool size
-    ssl: {
-      rejectUnauthorized: false, // Accept Supabase self-signed certificates
-    },
+    // SSL only for remote connections (Supabase)
+    ...(connectionString.includes('localhost') ? {} : {
+      ssl: {
+        rejectUnauthorized: false, // Accept Supabase self-signed certificates
+      },
+    }),
     // NOTE: pg-boss v9 doesn't support these options (v10+ only)
     // archiveCompletedAfterSeconds: 604800,
     // retentionDays: 30,
