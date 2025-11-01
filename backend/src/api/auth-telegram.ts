@@ -36,6 +36,7 @@ router.post('/start', async (req, res) => {
 
   try {
     console.log('🔐 Начало аутентификации Telegram для:', phone)
+    console.log('📋 Получены credentials - API_ID:', apiId, 'API_HASH length:', apiHash?.length)
 
     // Проверяем, есть ли кэшированная сессия для этого номера
     // Это позволяет переиспользовать auth_key и избежать блокировки Telegram
