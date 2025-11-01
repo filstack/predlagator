@@ -26,15 +26,15 @@ const phoneSessionCache = new Map<string, string>()
  * Отправляет SMS код на указанный номер телефона
  */
 router.post('/start', async (req, res) => {
+  const { apiId, apiHash, phone } = req.body
+
+  if (!apiId || !apiHash || !phone) {
+    return res.status(400).json({
+      error: 'apiId, apiHash и phone обязательны',
+    })
+  }
+
   try {
-    const { apiId, apiHash, phone } = req.body
-
-    if (!apiId || !apiHash || !phone) {
-      return res.status(400).json({
-        error: 'apiId, apiHash и phone обязательны',
-      })
-    }
-
     console.log('🔐 Начало аутентификации Telegram для:', phone)
 
     // Проверяем, есть ли кэшированная сессия для этого номера
