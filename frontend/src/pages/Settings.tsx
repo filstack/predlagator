@@ -135,19 +135,30 @@ export default function Settings() {
       try {
         const data = await apiClient.post<{
           success: boolean;
+          needPassword?: boolean;
           status?: string;
           sessionString?: string;
           user?: any;
+          message?: string;
         }>(
           '/auth-telegram/qr-check',
           { sessionId }
         )
 
         if (data.success && data.sessionString) {
-          // QR код отсканирован!
+          // QR код отсканирован и вход успешен!
           clearInterval(interval)
           setPollingInterval(null)
           handleAuthSuccess(data)
+        } else if (data.needPassword) {
+          // QR код отсканирован, но требуется 2FA пароль
+          clearInterval(interval)
+          setPollingInterval(null)
+          setAuthStep('password')
+          toast({
+            title: 'Требуется 2FA',
+            description: data.message || 'Введите пароль двухфакторной аутентификации',
+          })
         }
       } catch (error) {
         // Игнорируем ошибки опроса
@@ -180,7 +191,12 @@ export default function Settings() {
 
     try {
       setLoading(true)
-      const data = await apiClient.post<any>('/auth-telegram/verify-password', {
+
+      // Определяем, QR сессия или phone-based по sessionId
+      const isQrSession = sessionId.startsWith('qr_')
+      const endpoint = isQrSession ? '/auth-telegram/qr-verify-password' : '/auth-telegram/verify-password'
+
+      const data = await apiClient.post<any>(endpoint, {
         sessionId,
         password,
       })

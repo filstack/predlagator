@@ -350,6 +350,16 @@ router.post('/qr-check', async (req, res) => {
         user: qrSession.user,
       })
     } catch (error: any) {
+      // Если требуется 2FA пароль
+      if (error.message.includes('SESSION_PASSWORD_NEEDED')) {
+        console.log('🔐 QR отсканирован, требуется 2FA пароль')
+        return res.json({
+          success: false,
+          needPassword: true,
+          message: 'QR код отсканирован! Введите пароль двухфакторной аутентификации',
+        })
+      }
+
       // Если ошибка "AUTH_KEY_UNREGISTERED" - всё ещё ждём
       if (error.message.includes('AUTH_KEY_UNREGISTERED') || error.message.includes('Unauthorized')) {
         return res.json({
@@ -366,6 +376,82 @@ router.post('/qr-check', async (req, res) => {
 
     return res.status(500).json({
       error: 'Не удалось проверить статус',
+      details: error.message,
+    })
+  }
+})
+
+/**
+ * Шаг 3 (для QR): Ввести 2FA пароль после сканирования QR кода
+ */
+router.post('/qr-verify-password', async (req, res) => {
+  try {
+    const { sessionId, password } = req.body
+
+    if (!sessionId || !password) {
+      return res.status(400).json({
+        error: 'sessionId и password обязательны',
+      })
+    }
+
+    const qrSession = qrAuthSessions.get(sessionId)
+    if (!qrSession) {
+      return res.status(404).json({
+        error: 'Сессия не найдена или истекла',
+      })
+    }
+
+    console.log('🔐 Проверка 2FA пароля для QR сессии')
+
+    // Получаем настройки пароля
+    const passwordSrpResult = await qrSession.client.invoke(
+      new (require('telegram/tl').Api.account.GetPassword)()
+    )
+
+    // Импортируем функцию для вычисления SRP чека
+    const { computeCheck } = require('telegram/Password')
+
+    // Вычисляем SRP чек
+    const passwordSrpCheck = await computeCheck(passwordSrpResult, password)
+
+    // Входим с паролем
+    await qrSession.client.invoke(
+      new (require('telegram/tl').Api.auth.CheckPassword)({
+        password: passwordSrpCheck,
+      })
+    )
+
+    // Успешная аутентификация
+    const sessionString = qrSession.client.session.save() as unknown as string
+
+    // Получаем информацию о пользователе
+    const me = await qrSession.client.getMe()
+
+    qrSession.sessionString = sessionString
+    qrSession.user = {
+      id: me.id.toString(),
+      username: me.username,
+      phone: me.phone,
+      firstName: me.firstName,
+    }
+    qrSession.isAuthenticated = true
+
+    console.log('✓ QR + 2FA аутентификация успешна для:', me.username || me.phone)
+
+    // Отключаемся и удаляем сессию
+    await qrSession.client.disconnect()
+    qrAuthSessions.delete(sessionId)
+
+    return res.json({
+      success: true,
+      sessionString,
+      user: qrSession.user,
+    })
+  } catch (error: any) {
+    console.error('✗ Ошибка проверки 2FA пароля:', error)
+
+    return res.status(500).json({
+      error: 'Неверный пароль или ошибка аутентификации',
       details: error.message,
     })
   }
