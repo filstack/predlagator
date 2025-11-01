@@ -38,7 +38,9 @@
       "Bash(node -e \"console.log(''Запуск verify-telegram-api.mjs для проверки...'')\")",
       "Bash(timeout /t 2 /nobreak)",
       "Bash(node test-telegram-connection.mjs)",
-      "Bash(netstat:*)"
+      "Bash(netstat:*)",
+      "Bash(git restore:*)",
+      "Bash(rm:*)"
     ],
     "deny": [],
     "ask": []
