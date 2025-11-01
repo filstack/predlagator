@@ -78,6 +78,12 @@ router.post('/start', async (req, res) => {
     }
 
     console.log('✓ Telegram API успешно обработал запрос кода')
+    console.log('📄 Детали ответа от Telegram:', JSON.stringify({
+      phoneCodeHash: result.phoneCodeHash,
+      isCodeViaApp: result.isCodeViaApp,
+      timeout: result.timeout,
+      type: result.type?.__constructor || result.type?.className
+    }))
 
     // Создаём уникальный ID сессии
     const sessionId = `${Date.now()}_${Math.random().toString(36).substring(7)}`
