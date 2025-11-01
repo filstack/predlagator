@@ -15,7 +15,22 @@ interface AuthSession {
   sessionString: string // Добавляем сохранение session string
 }
 
+// Хранилище QR-код сессий
+interface QrAuthSession {
+  client: TelegramClient
+  apiId: number
+  apiHash: string
+  qrCode: {
+    token: Buffer
+    loginUrl: string
+  }
+  sessionString?: string
+  user?: any
+  isAuthenticated: boolean
+}
+
 const authSessions = new Map<string, AuthSession>()
+const qrAuthSessions = new Map<string, QrAuthSession>()
 
 // Кэш базовых сессий по телефону (для переиспользования auth_key)
 // Это решает проблему создания множества auth_key при частых запросах
@@ -136,6 +151,221 @@ router.post('/start', async (req, res) => {
 
     return res.status(500).json({
       error: 'Не удалось начать аутентификацию',
+      details: error.message,
+    })
+  }
+})
+
+/**
+ * Шаг 1 (альтернатива): Начать QR-код аутентификацию
+ * Генерирует QR код для сканирования в Telegram приложении
+ */
+router.post('/qr-start', async (req, res) => {
+  const { apiId, apiHash } = req.body
+
+  if (!apiId || !apiHash) {
+    return res.status(400).json({
+      error: 'apiId и apiHash обязательны',
+    })
+  }
+
+  try {
+    console.log('🔐 Начало QR-код аутентификации Telegram')
+    console.log('📋 Получены credentials - API_ID:', apiId, 'API_HASH length:', apiHash?.length)
+
+    const session = new StringSession('')
+    const client = new TelegramClient(session, parseInt(apiId), apiHash, {
+      connectionRetries: 5,
+    })
+
+    await client.connect()
+
+    // Создаём уникальный ID сессии
+    const sessionId = `qr_${Date.now()}_${Math.random().toString(36).substring(7)}`
+
+    // Генерируем QR код
+    console.log('📱 Генерация QR кода...')
+
+    let qrCodeToken: Buffer | null = null
+    let qrCodeLoginUrl: string | null = null
+
+    // Запускаем процесс QR аутентификации в фоне
+    client.signInUserWithQrCode(
+      { apiId: parseInt(apiId), apiHash },
+      {
+        onError: (err: Error) => {
+          console.error('✗ Ошибка QR кода:', err)
+          const session = qrAuthSessions.get(sessionId)
+          if (session) {
+            session.isAuthenticated = false
+          }
+        },
+        qrCode: async (qrCode) => {
+          console.log('✓ QR код сгенерирован:', qrCode.token.toString('base64').substring(0, 20) + '...')
+          qrCodeToken = qrCode.token
+          qrCodeLoginUrl = `tg://login?token=${Buffer.from(qrCode.token).toString('base64url')}`
+        },
+      }
+    ).then(async () => {
+      // QR код был отсканирован и пользователь авторизован
+      console.log('✓ QR код отсканирован успешно')
+      const session = qrAuthSessions.get(sessionId)
+      if (session) {
+        const sessionString = client.session.save() as unknown as string
+        const me = await client.getMe()
+
+        session.sessionString = sessionString
+        session.user = {
+          id: me.id.toString(),
+          username: me.username,
+          phone: me.phone,
+          firstName: me.firstName,
+        }
+        session.isAuthenticated = true
+      }
+    }).catch((err) => {
+      console.error('✗ Ошибка QR аутентификации:', err)
+    })
+
+    // Ждём пока QR код будет сгенерирован
+    await new Promise((resolve) => {
+      const checkInterval = setInterval(() => {
+        if (qrCodeToken) {
+          clearInterval(checkInterval)
+          resolve(true)
+        }
+      }, 100)
+
+      // Таймаут 10 секунд
+      setTimeout(() => {
+        clearInterval(checkInterval)
+        resolve(false)
+      }, 10000)
+    })
+
+    if (!qrCodeToken || !qrCodeLoginUrl) {
+      throw new Error('Не удалось сгенерировать QR код')
+    }
+
+    // Сохраняем сессию
+    qrAuthSessions.set(sessionId, {
+      client,
+      apiId: parseInt(apiId),
+      apiHash,
+      qrCode: {
+        token: qrCodeToken,
+        loginUrl: qrCodeLoginUrl,
+      },
+      isAuthenticated: false,
+    })
+
+    console.log('✓ QR код готов к сканированию')
+
+    return res.json({
+      success: true,
+      sessionId,
+      qrCode: {
+        token: qrCodeToken.toString('base64'),
+        loginUrl: qrCodeLoginUrl,
+      },
+      message: 'Отсканируйте QR код в приложении Telegram: Settings → Devices → Scan QR Code',
+    })
+  } catch (error: any) {
+    console.error('✗ Ошибка генерации QR кода:', error)
+
+    return res.status(500).json({
+      error: 'Не удалось сгенерировать QR код',
+      details: error.message,
+    })
+  }
+})
+
+/**
+ * Шаг 2 (для QR): Проверить статус QR-код аутентификации
+ * Клиент должен периодически опрашивать этот endpoint
+ */
+router.post('/qr-check', async (req, res) => {
+  try {
+    const { sessionId } = req.body
+
+    if (!sessionId) {
+      return res.status(400).json({
+        error: 'sessionId обязателен',
+      })
+    }
+
+    const qrSession = qrAuthSessions.get(sessionId)
+    if (!qrSession) {
+      return res.status(404).json({
+        error: 'Сессия не найдена или истекла',
+      })
+    }
+
+    // Если уже аутентифицирован, возвращаем результат
+    if (qrSession.isAuthenticated && qrSession.sessionString) {
+      const result = {
+        success: true,
+        sessionString: qrSession.sessionString,
+        user: qrSession.user,
+      }
+
+      // Отключаемся и удаляем сессию
+      await qrSession.client.disconnect()
+      qrAuthSessions.delete(sessionId)
+
+      console.log('✓ QR-код аутентификация успешна')
+      return res.json(result)
+    }
+
+    // Проверяем, подключён ли клиент
+    if (!qrSession.client.connected) {
+      return res.json({
+        success: false,
+        status: 'waiting',
+        message: 'Ожидание сканирования QR кода...',
+      })
+    }
+
+    // Проверяем авторизацию
+    try {
+      const me = await qrSession.client.getMe()
+
+      // Если getMe() успешен - пользователь авторизован
+      const sessionString = qrSession.client.session.save() as unknown as string
+
+      qrSession.sessionString = sessionString
+      qrSession.user = {
+        id: me.id.toString(),
+        username: me.username,
+        phone: me.phone,
+        firstName: me.firstName,
+      }
+      qrSession.isAuthenticated = true
+
+      console.log('✓ QR код отсканирован пользователем:', me.username || me.phone)
+
+      return res.json({
+        success: true,
+        sessionString,
+        user: qrSession.user,
+      })
+    } catch (error: any) {
+      // Если ошибка "AUTH_KEY_UNREGISTERED" - всё ещё ждём
+      if (error.message.includes('AUTH_KEY_UNREGISTERED') || error.message.includes('Unauthorized')) {
+        return res.json({
+          success: false,
+          status: 'waiting',
+          message: 'Ожидание сканирования QR кода...',
+        })
+      }
+
+      throw error
+    }
+  } catch (error: any) {
+    console.error('✗ Ошибка проверки QR статуса:', error)
+
+    return res.status(500).json({
+      error: 'Не удалось проверить статус',
       details: error.message,
     })
   }
@@ -576,7 +806,9 @@ async function updateEnvFile(key: string, value: string): Promise<void> {
 // Очистка старых сессий (каждые 10 минут)
 setInterval(() => {
   const now = Date.now()
-  for (const [sessionId, authSession] of authSessions.entries()) {
+
+  // Очистка phone-based сессий
+  Array.from(authSessions.entries()).forEach(([sessionId, authSession]) => {
     const sessionAge = now - parseInt(sessionId.split('_')[0])
     // Удаляем сессии старше 10 минут
     if (sessionAge > 10 * 60 * 1000) {
@@ -584,9 +816,21 @@ setInterval(() => {
       authSessions.delete(sessionId)
       // Очищаем кэш сессии при автоматической очистке
       phoneSessionCache.delete(authSession.phone)
-      console.log('🗑️  Удалена устаревшая сессия аутентификации для:', authSession.phone)
+      console.log('🗑️  Удалена устаревшая phone сессия для:', authSession.phone)
     }
-  }
+  })
+
+  // Очистка QR-код сессий
+  Array.from(qrAuthSessions.entries()).forEach(([sessionId, qrSession]) => {
+    const timestampPart = sessionId.split('_')[1]
+    const sessionAge = now - parseInt(timestampPart)
+    // Удаляем QR сессии старше 10 минут (QR код истекает через 60 секунд по умолчанию в Telegram)
+    if (sessionAge > 10 * 60 * 1000) {
+      qrSession.client.disconnect().catch(() => {})
+      qrAuthSessions.delete(sessionId)
+      console.log('🗑️  Удалена устаревшая QR сессия:', sessionId)
+    }
+  })
 }, 10 * 60 * 1000)
 
 export default router
