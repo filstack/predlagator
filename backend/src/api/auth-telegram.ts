@@ -331,6 +331,26 @@ router.post('/qr-check', async (req, res) => {
 
       console.log('✓ QR код отсканирован пользователем:', me.username || me.phone)
 
+      // Сохраняем сессию в .env файл для worker'а
+      try {
+        const fs = require('fs')
+        const path = require('path')
+        const envPath = path.join(__dirname, '../../.env')
+        let envContent = fs.readFileSync(envPath, 'utf8')
+
+        // Обновляем или добавляем TELEGRAM_SESSION
+        if (envContent.includes('TELEGRAM_SESSION=')) {
+          envContent = envContent.replace(/TELEGRAM_SESSION=.*$/m, `TELEGRAM_SESSION=${sessionString}`)
+        } else {
+          envContent += `\nTELEGRAM_SESSION=${sessionString}\n`
+        }
+
+        fs.writeFileSync(envPath, envContent, 'utf8')
+        console.log('✅ Сессия сохранена в .env файл')
+      } catch (saveError: any) {
+        console.error('⚠️ Не удалось сохранить сессию в .env:', saveError.message)
+      }
+
       return res.json({
         success: true,
         sessionString,
@@ -424,6 +444,26 @@ router.post('/qr-verify-password', async (req, res) => {
     qrSession.isAuthenticated = true
 
     console.log('✓ QR + 2FA аутентификация успешна для:', me.username || me.phone)
+
+    // Сохраняем сессию в .env файл для worker'а
+    try {
+      const fs = require('fs')
+      const path = require('path')
+      const envPath = path.join(__dirname, '../../.env')
+      let envContent = fs.readFileSync(envPath, 'utf8')
+
+      // Обновляем или добавляем TELEGRAM_SESSION
+      if (envContent.includes('TELEGRAM_SESSION=')) {
+        envContent = envContent.replace(/TELEGRAM_SESSION=.*$/m, `TELEGRAM_SESSION=${sessionString}`)
+      } else {
+        envContent += `\nTELEGRAM_SESSION=${sessionString}\n`
+      }
+
+      fs.writeFileSync(envPath, envContent, 'utf8')
+      console.log('✅ Сессия сохранена в .env файл')
+    } catch (saveError: any) {
+      console.error('⚠️ Не удалось сохранить сессию в .env:', saveError.message)
+    }
 
     // Отключаемся и удаляем сессию
     await qrSession.client.disconnect()
