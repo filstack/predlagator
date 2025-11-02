@@ -190,6 +190,8 @@ router.post('/qr-start', async (req, res) => {
     let qrCodeLoginUrl: string | null = null
 
     // Запускаем процесс QR аутентификации в фоне
+    // ВАЖНО: НЕ обрабатываем промис здесь, т.к. он завершится только после успешной аутентификации
+    // Вместо этого проверяем статус через client.getMe() в /qr-check endpoint
     client.signInUserWithQrCode(
       { apiId: parseInt(apiId), apiHash },
       {
@@ -206,25 +208,10 @@ router.post('/qr-start', async (req, res) => {
           qrCodeLoginUrl = `tg://login?token=${Buffer.from(qrCode.token).toString('base64url')}`
         },
       }
-    ).then(async () => {
-      // QR код был отсканирован и пользователь авторизован
-      console.log('✓ QR код отсканирован успешно')
-      const session = qrAuthSessions.get(sessionId)
-      if (session) {
-        const sessionString = client.session.save() as unknown as string
-        const me = await client.getMe()
-
-        session.sessionString = sessionString
-        session.user = {
-          id: me.id.toString(),
-          username: me.username,
-          phone: me.phone,
-          firstName: me.firstName,
-        }
-        session.isAuthenticated = true
-      }
-    }).catch((err) => {
-      console.error('✗ Ошибка QR аутентификации:', err)
+    ).catch((err) => {
+      // Игнорируем ошибки здесь - они будут обработаны в /qr-check
+      // Часто бросается "Account has 2FA enabled" - это нормально
+      console.log('ℹ️  QR процесс завершён (может потребоваться 2FA):', err.message)
     })
 
     // Ждём пока QR код будет сгенерирован
