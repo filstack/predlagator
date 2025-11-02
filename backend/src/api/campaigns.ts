@@ -12,6 +12,8 @@ import {
   campaignQuerySchema,
   campaignActionSchema,
 } from '../../../shared/src/schemas/campaign';
+import { getPgBoss } from '../queues/pg-boss-queue';
+import { QUEUE_NAMES, StartCampaignJobData } from '../types/queue-jobs';
 
 const router = Router();
 
@@ -301,8 +303,24 @@ router.post(
 
       if (updateError) throw updateError;
 
-      // Polling worker будет автоматически обрабатывать campaigns со статусом RUNNING
-      console.log(`✅ Campaign ${campaignId} статус изменен на ${newStatus}`);
+      // Создаём джоб в pg-boss для запуска/возобновления кампании
+      if (action === 'start' || action === 'resume') {
+        const boss = await getPgBoss();
+        const jobData: StartCampaignJobData = {
+          campaignId,
+          userId: req.body.userId, // Опционально, для аудита
+        };
+
+        await boss.send(QUEUE_NAMES.START_CAMPAIGN, jobData, {
+          singletonKey: `campaign-${campaignId}`,
+          singletonSeconds: 60, // Предотвращаем дубликаты в течение 60 секунд
+          retryLimit: 1,
+        });
+
+        console.log(`✅ Campaign ${campaignId} статус изменен на ${newStatus}, джоб создан в pg-boss`);
+      } else {
+        console.log(`✅ Campaign ${campaignId} статус изменен на ${newStatus}`);
+      }
 
       res.json(updated);
     } catch (error) {
