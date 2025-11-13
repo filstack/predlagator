@@ -1,0 +1,330 @@
+// backend/src/api/channels.ts - MIGRATED TO SUPABASE
+import { Router } from 'express';
+import { randomUUID } from 'crypto';
+import { getSupabase } from '../lib/supabase';
+import { validate } from '../middleware/validate';
+import {
+  channelQuerySchema,
+  createChannelSchema,
+  updateChannelSchema,
+} from '../../../shared/src/schemas/channel';
+
+const router = Router();
+
+// GET /api/channels - List all channels with filters
+router.get('/', async (req, res, next) => {
+  try {
+    const query = channelQuerySchema.parse(req.query);
+    const { category, search, isActive, page, limit } = query;
+    const supabase = getSupabase();
+
+    let dbQuery = supabase
+      .from('channels')
+      .select('*', { count: 'exact' });
+
+    if (category) {
+      dbQuery = dbQuery.eq('category', category);
+    }
+
+    if (search) {
+      dbQuery = dbQuery.or(`username.ilike.%${search}%,title.ilike.%${search}%`);
+    }
+
+    if (isActive !== undefined) {
+      dbQuery = dbQuery.eq('is_active', isActive);
+    }
+
+    dbQuery = dbQuery
+      .order('created_at', { ascending: false })
+      .range((page - 1) * limit, page * limit - 1);
+
+    const { data: channels, error, count } = await dbQuery;
+
+    if (error) throw error;
+
+    res.json({
+      data: channels,
+      pagination: {
+        page,
+        limit,
+        total: count || 0,
+        pages: Math.ceil((count || 0) / limit),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/channels/:id - Get single channel
+router.get('/:id', async (req, res, next) => {
+  try {
+    const supabase = getSupabase();
+
+    const { data: channel, error } = await supabase
+      .from('channels')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+
+    if (error) throw error;
+
+    if (!channel) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    res.json(channel);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/channels/meta/categories - Get all unique categories
+router.get('/meta/categories', async (req, res, next) => {
+  try {
+    const supabase = getSupabase();
+
+    // Supabase doesn't have groupBy, so we'll fetch all categories and group manually
+    const { data: channels, error } = await supabase
+      .from('channels')
+      .select('category');
+
+    if (error) throw error;
+
+    // Group by category and count
+    const categoryMap = new Map<string, number>();
+    channels?.forEach((ch) => {
+      const count = categoryMap.get(ch.category) || 0;
+      categoryMap.set(ch.category, count + 1);
+    });
+
+    // Convert to array and sort by count
+    const categories = Array.from(categoryMap.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+
+    res.json(categories);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/channels - Create new channel
+router.post('/', validate(createChannelSchema, 'body'), async (req, res, next) => {
+  try {
+    const { username, category, tgstatUrl, title, description, memberCount, isVerified, collectedAt } = req.body;
+    const supabase = getSupabase();
+
+    const { data: channel, error } = await supabase
+      .from('channels')
+      .insert({
+        id: randomUUID(),
+        username,
+        category,
+        tgstat_url: tgstatUrl,
+        title,
+        description,
+        member_count: memberCount,
+        is_verified: isVerified ?? false,
+        collected_at: collectedAt || new Date().toISOString(),
+        is_active: true,
+        error_count: 0,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    res.status(201).json(channel);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PATCH /api/channels/:id - Update channel
+router.patch('/:id', validate(updateChannelSchema, 'body'), async (req, res, next) => {
+  try {
+    const updates = req.body;
+    const supabase = getSupabase();
+
+    // Convert camelCase to snake_case for Supabase
+    const updateData: any = { updated_at: new Date().toISOString() };
+    if (updates.username !== undefined) updateData.username = updates.username;
+    if (updates.category !== undefined) updateData.category = updates.category;
+    if (updates.tgstatUrl !== undefined) updateData.tgstat_url = updates.tgstatUrl;
+    if (updates.title !== undefined) updateData.title = updates.title;
+    if (updates.description !== undefined) updateData.description = updates.description;
+    if (updates.memberCount !== undefined) updateData.member_count = updates.memberCount;
+    if (updates.isVerified !== undefined) updateData.is_verified = updates.isVerified;
+    if (updates.isActive !== undefined) updateData.is_active = updates.isActive;
+    if (updates.errorCount !== undefined) updateData.error_count = updates.errorCount;
+
+    const { data: channel, error } = await supabase
+      .from('channels')
+      .update(updateData)
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    res.json(channel);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// DELETE /api/channels/:id - Delete channel
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const supabase = getSupabase();
+
+    const { error } = await supabase
+      .from('channels')
+      .delete()
+      .eq('id', req.params.id);
+
+    if (error) throw error;
+
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/channels/import-ndjson - Import channels from NDJSON file
+router.post('/import-ndjson', async (req, res, next) => {
+  try {
+    console.log('📥 Получен запрос на импорт NDJSON');
+    const { ndjsonContent } = req.body;
+
+    if (!ndjsonContent) {
+      console.log('❌ Отсутствует ndjsonContent');
+      return res.status(400).json({ error: 'ndjsonContent is required' });
+    }
+
+    console.log(`📊 Размер контента: ${ndjsonContent.length} символов`);
+
+    const supabase = getSupabase();
+    const lines = ndjsonContent.trim().split('\n');
+    const results = {
+      total: 0,
+      imported: 0,
+      skipped: 0,
+      errors: 0,
+      channels: [] as any[],
+    };
+
+    for (const line of lines) {
+      results.total++;
+
+      try {
+        const record = JSON.parse(line);
+
+        // Пропускаем failed записи
+        if (record.status !== 'success') {
+          results.skipped++;
+          continue;
+        }
+
+        // Парсим scraped_content
+        let scrapedContent: any;
+        try {
+          scrapedContent = JSON.parse(record.scraped_content);
+        } catch {
+          results.errors++;
+          continue;
+        }
+
+        // Извлекаем все https://t.me/ ссылки из links[]
+        const telegramLinks = scrapedContent.links?.filter(
+          (link: string) => link.startsWith('https://t.me/')
+        ) || [];
+
+        if (telegramLinks.length === 0) {
+          results.skipped++;
+          continue;
+        }
+
+        // Получаем username из основной ссылки
+        const mainTelegramLink = telegramLinks[0];
+        let channelUsername = '';
+
+        // Извлекаем username из ссылки
+        // Поддерживаем форматы: https://t.me/username и https://t.me/joinchat/...
+        const usernameMatch = mainTelegramLink.match(/https:\/\/t\.me\/([^/?]+)/);
+        if (usernameMatch) {
+          channelUsername = usernameMatch[1];
+
+          // Пропускаем +XXXX и joinchat ссылки
+          if (channelUsername.startsWith('+') || channelUsername === 'joinchat') {
+            results.skipped++;
+            continue;
+          }
+        } else {
+          results.skipped++;
+          continue;
+        }
+
+        // Проверяем, существует ли канал
+        const { data: existingChannel } = await supabase
+          .from('channels')
+          .select('id')
+          .eq('username', channelUsername)
+          .single();
+
+        if (existingChannel) {
+          results.skipped++;
+          continue;
+        }
+
+        // Создаем канал (генерируем UUID вручную)
+        const { data: newChannel, error: insertError } = await supabase
+          .from('channels')
+          .insert({
+            id: randomUUID(),
+            username: channelUsername,
+            category: record.category || 'Uncategorized',
+            tgstat_url: record.tgstat_url || null,
+            title: scrapedContent.title || channelUsername,
+            description: scrapedContent.description || '',
+            member_count: 0,
+            is_verified: scrapedContent.rkn_registered || false,
+            collected_at: record.collected_at || new Date().toISOString(),
+            is_active: true,
+            error_count: 0,
+            telegram_links: telegramLinks, // Сохраняем все Telegram ссылки
+          })
+          .select()
+          .single();
+
+        if (insertError) {
+          console.error('Error inserting channel:', insertError);
+          results.errors++;
+          continue;
+        }
+
+        results.imported++;
+        results.channels.push(newChannel);
+
+      } catch (error) {
+        console.error('Error processing line:', error);
+        results.errors++;
+      }
+    }
+
+    console.log(`✅ Импорт завершен: ${results.imported} импортировано, ${results.skipped} пропущено, ${results.errors} ошибок`);
+
+    res.json({
+      success: true,
+      message: `Импортировано ${results.imported} из ${results.total} записей`,
+      results,
+    });
+
+  } catch (error) {
+    console.error('❌ Ошибка при импорте NDJSON:', error);
+    next(error);
+  }
+});
+
+export default router;

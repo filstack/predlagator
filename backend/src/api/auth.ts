@@ -65,7 +65,9 @@ router.post('/register', validate(registerSchema, 'body'), async (req, res, next
       .from('users')
       .insert({
         id: authData.user.id,
-        role: 'USER', // Default role
+        username: username || email.split('@')[0],
+        email: email,
+        role: 'OPERATOR', // Default role (was 'USER', but schema only allows ADMIN, OPERATOR, AUDITOR)
       });
 
     if (userError) {

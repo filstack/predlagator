@@ -8,10 +8,7 @@ dotenv.config()
 
 const app = express()
 
-// Security middleware
-app.use(helmet())
-
-// CORS configuration
+// CORS configuration (должен быть ПЕРЕД helmet)
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:5174',
@@ -22,12 +19,22 @@ app.use(
   cors({
     origin: allowedOrigins,
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  })
+)
+
+// Security middleware (после CORS)
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    contentSecurityPolicy: false, // Отключаем для dev
   })
 )
 
 // Body parsers
-app.use(express.json({ limit: '10mb' }))
-app.use(express.urlencoded({ extended: true }))
+app.use(express.json({ limit: '50mb' }))
+app.use(express.urlencoded({ extended: true, limit: '50mb' }))
 
 // Health check endpoint
 app.get('/health', (req, res) => {

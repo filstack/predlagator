@@ -92,6 +92,14 @@ router.post('/send-message', async (req, res) => {
  */
 router.get('/telegram-status', async (req, res) => {
   try {
+    // Проверяем, есть ли TELEGRAM_SESSION в .env
+    if (!process.env.TELEGRAM_SESSION || process.env.TELEGRAM_SESSION === '') {
+      return res.json({
+        connected: false,
+        message: 'Telegram session not configured. Please authenticate first.',
+      })
+    }
+
     const client = await telegramClient.getClient()
     const me = await client.getMe()
 
@@ -122,7 +130,7 @@ router.get('/channels', async (req, res) => {
     const supabase = getSupabase()
     const { data: channels, error } = await supabase
       .from('channels')
-      .select('id, username, title, is_active')
+      .select('id, username, title, status')
       .order('created_at', { ascending: false })
 
     if (error) throw error

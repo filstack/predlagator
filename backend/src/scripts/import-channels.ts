@@ -2,14 +2,21 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import * as readline from 'readline'
+import { createClient } from '@supabase/supabase-js'
+import dotenv from 'dotenv'
 
-// Set DATABASE_URL before loading Prisma
-const dbPath = path.resolve(__dirname, '../../../shared/prisma/dev.db')
-process.env.DATABASE_URL = `file:${dbPath}`
+// Load environment variables
+dotenv.config()
 
-import { PrismaClient } from '../../../shared/node_modules/@prisma/client'
+// Initialize Supabase client
+const supabaseUrl = process.env.SUPABASE_URL
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-const prisma = new PrismaClient()
+if (!supabaseUrl || !supabaseServiceKey) {
+  throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY')
+}
+
+const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
 interface ScrapedContent {
   title?: string
@@ -20,18 +27,17 @@ interface ScrapedContent {
 }
 
 interface ChannelRecord {
-  jobId: string
   category: string
   tgstat_url: string
-  username: string
+  username: string | null
   collected_at: string
-  status: string
+  status?: string
   scraped_content?: string
   scraped_at?: string
   error_message?: string
 }
 
-async function importChannelsFromFile(filePath: string): Promise<void> {
+async function importChannelsFromFile(filePath: string, userId: string): Promise<void> {
   const fileStream = fs.createReadStream(filePath)
   const rl = readline.createInterface({
     input: fileStream,
@@ -39,15 +45,18 @@ async function importChannelsFromFile(filePath: string): Promise<void> {
   })
 
   let imported = 0
+  let updated = 0
   let skipped = 0
   let errors = 0
 
   for await (const line of rl) {
+    if (!line.trim()) continue // Skip empty lines
+
     try {
       const record: ChannelRecord = JSON.parse(line)
 
-      // Пропускаем неуспешные записи или без username
-      if (record.status !== 'success' || !record.username || record.username === 'unknown') {
+      // Пропускаем записи без username
+      if (!record.username || record.username === 'unknown') {
         skipped++
         continue
       }
@@ -62,64 +71,82 @@ async function importChannelsFromFile(filePath: string): Promise<void> {
       }
 
       // Извлекаем данные
-      const username = record.username.replace('@', '')
+      const username = record.username.startsWith('@') ? record.username : `@${record.username}`
       const title = scrapedData?.title || null
-      const description = scrapedData?.description || null
-      const category = record.category
-      const tgstatUrl = record.tgstat_url
-      const collectedAt = new Date(record.collected_at)
+      const name = record.category || username // Используем category как name
+      const tgstat_url = record.tgstat_url || null
+      const telegram_links = scrapedData?.links || []
 
-      // Проверяем, существует ли канал
-      const existing = await prisma.channel.findUnique({
-        where: { username },
-      })
+      // Проверяем, существует ли канал (по username и user_id)
+      const { data: existing } = await supabase
+        .from('channels')
+        .select('id, updated_at')
+        .eq('username', username)
+        .eq('user_id', userId)
+        .single()
 
       if (existing) {
         // Обновляем существующий канал
-        await prisma.channel.update({
-          where: { username },
-          data: {
+        const { error } = await supabase
+          .from('channels')
+          .update({
+            name,
             title,
-            description,
-            category,
-            tgstatUrl,
-            updatedAt: new Date(),
-          },
-        })
-        console.log(`Updated: @${username}`)
+            tgstat_url,
+            telegram_links,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existing.id)
+
+        if (error) {
+          console.error(`Error updating ${username}:`, error.message)
+          errors++
+        } else {
+          console.log(`Updated: ${username}`)
+          updated++
+        }
       } else {
         // Создаем новый канал
-        await prisma.channel.create({
-          data: {
+        const { error } = await supabase
+          .from('channels')
+          .insert({
+            user_id: userId,
+            name,
             username,
             title,
-            description,
-            category,
-            tgstatUrl,
-            collectedAt,
-            isActive: true,
-          },
-        })
-        console.log(`Imported: @${username}`)
-        imported++
+            tgstat_url,
+            telegram_links,
+            status: 'active',
+          })
+
+        if (error) {
+          console.error(`Error importing ${username}:`, error.message)
+          errors++
+        } else {
+          console.log(`Imported: ${username}`)
+          imported++
+        }
       }
-    } catch (error) {
-      console.error(`Error processing line:`, error)
+    } catch (error: any) {
+      console.error(`Error processing line:`, error.message)
       errors++
     }
   }
 
   console.log(`\nImport completed!`)
   console.log(`Imported: ${imported}`)
+  console.log(`Updated: ${updated}`)
   console.log(`Skipped: ${skipped}`)
   console.log(`Errors: ${errors}`)
 }
 
 async function main() {
   const filePath = process.argv[2]
+  let userId = process.argv[3]
 
   if (!filePath) {
-    console.error('Usage: tsx import-channels.ts <path-to-ndjson-file>')
+    console.error('Usage: tsx import-channels.ts <path-to-jsonl-file> [user-id]')
+    console.error('If user-id is not provided, first user from auth.users will be used')
     process.exit(1)
   }
 
@@ -128,13 +155,25 @@ async function main() {
     process.exit(1)
   }
 
+  // If userId not provided, get first user from auth.users
+  if (!userId) {
+    const { data: users, error } = await supabase.auth.admin.listUsers()
+
+    if (error || !users || users.users.length === 0) {
+      console.error('No users found in database. Please create a user first or provide user-id')
+      process.exit(1)
+    }
+
+    userId = users.users[0].id
+    console.log(`Using user: ${users.users[0].email} (${userId})`)
+  }
+
   console.log(`Importing channels from: ${filePath}`)
-  await importChannelsFromFile(filePath)
-  await prisma.$disconnect()
+  await importChannelsFromFile(filePath, userId)
+  console.log('\nDone!')
 }
 
 main().catch((error) => {
-  console.error(error)
-  prisma.$disconnect()
+  console.error('Fatal error:', error)
   process.exit(1)
 })

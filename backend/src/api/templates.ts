@@ -1,6 +1,8 @@
 // backend/src/api/templates.ts - MIGRATED TO SUPABASE
 import { Router } from 'express';
+import { randomUUID } from 'crypto';
 import { getSupabase } from '../lib/supabase';
+import { convertSortBy } from '../lib/case-converter';
 import { validate } from '../middleware/validate';
 import {
   createTemplateSchema,
@@ -13,8 +15,9 @@ const router = Router();
 // GET /api/templates - Список всех шаблонов с фильтрами
 router.get('/', validate(templateQuerySchema, 'query'), async (req, res, next) => {
   try {
-    const { search, mediaType, page = 1, limit = 20, sortBy = 'created_at', sortOrder = 'desc' } = req.query as any;
+    const { search, mediaType, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = req.query as any;
     const supabase = getSupabase();
+    const sortBySnake = convertSortBy(sortBy, 'created_at');
 
     let query = supabase
       .from('templates')
@@ -29,7 +32,7 @@ router.get('/', validate(templateQuerySchema, 'query'), async (req, res, next) =
     }
 
     query = query
-      .order(sortBy, { ascending: sortOrder === 'asc' })
+      .order(sortBySnake, { ascending: sortOrder === 'asc' })
       .range((page - 1) * limit, page * limit - 1);
 
     const { data: templates, error, count } = await query;
@@ -93,6 +96,7 @@ router.post('/', validate(createTemplateSchema, 'body'), async (req, res, next) 
     const { data: template, error } = await supabase
       .from('templates')
       .insert({
+        id: randomUUID(),
         name,
         content,
         description,

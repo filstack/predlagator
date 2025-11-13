@@ -56,7 +56,7 @@ export async function createCampaignWorker(boss: PgBoss) {
       // 3. Extract channels from batch
       const channels = campaign.batch.channels
         ?.map((bc: any) => bc.channel)
-        .filter((ch: any) => ch && ch.is_active);
+        .filter((ch: any) => ch && ch.status === 'active');
 
       if (!channels || channels.length === 0) {
         throw new Error(`No active channels found for campaign: ${campaignId}`);
@@ -95,9 +95,9 @@ export async function createCampaignWorker(boss: PgBoss) {
             retryLimit: campaign.retry_limit,
             retryDelay: 5,
             retryBackoff: true,
-            expireInMinutes: 15,
-            singletonSeconds: Math.ceil(baseDelaySeconds),
-            singletonKey: campaignId
+            expireInMinutes: 15
+            // Убрали singletonSeconds и singletonKey - они предназначены для предотвращения
+            // дублей, а не для rate limiting. Для rate limiting используем только startAfter.
           }
         );
 

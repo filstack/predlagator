@@ -1,5 +1,6 @@
 // backend/src/middleware/audit-logger.ts - MIGRATED TO SUPABASE
 import { Request, Response, NextFunction } from 'express';
+import { randomUUID } from 'crypto';
 import { getSupabase } from '../lib/supabase';
 
 export interface AuditLogOptions {
@@ -24,6 +25,7 @@ export async function logAudit(
     await supabase
       .from('audit_logs')
       .insert({
+        id: randomUUID(),
         user_id: userId,
         action: options.action,
         resource_type: options.resourceType,

@@ -58,11 +58,20 @@ export default function Batches() {
   const handleCreateBatch = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      await createBatch(formData)
+      const payload = {
+        name: formData.name,
+        description: formData.description || undefined,
+        channelIds: formData.channelIds.length > 0 ? formData.channelIds : undefined,
+      }
+      console.log('📤 Frontend sending payload:', payload)
+      console.log('📤 Form data channelIds:', formData.channelIds)
+      await createBatch(payload)
       setIsCreateDialogOpen(false)
       setFormData({ name: '', description: '', channelIds: [] })
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to create batch:', error)
+      console.error('Response data:', error.response?.data)
+      console.error('Response status:', error.response?.status)
     }
   }
 
@@ -195,8 +204,8 @@ export default function Batches() {
                   <TableRow key={batch.id}>
                     <TableCell className="font-medium">{batch.name}</TableCell>
                     <TableCell>{batch.description || '-'}</TableCell>
-                    <TableCell>{batch.channelCount || 0}</TableCell>
-                    <TableCell>{formatDate(batch.createdAt)}</TableCell>
+                    <TableCell>{(batch as any).channel_count || 0}</TableCell>
+                    <TableCell>{formatDate((batch as any).created_at || batch.createdAt)}</TableCell>
                     <TableCell className="text-right">
                       <Button
                         variant="ghost"

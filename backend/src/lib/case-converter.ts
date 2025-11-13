@@ -15,7 +15,6 @@ const SORTBY_MAP: Record<string, string> = {
   updatedAt: 'updated_at',
   startedAt: 'started_at',
   completedAt: 'completed_at',
-  isActive: 'is_active',
   memberCount: 'member_count',
   channelCount: 'channel_count',
   totalJobs: 'total_jobs',

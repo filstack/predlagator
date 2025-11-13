@@ -76,23 +76,28 @@ export interface User {
 
 /**
  * Channel table (channels)
+ * Feature: 004-manual-channel-management
+ * Updated: Migration 006 - Added TGStat fields
  */
 export interface Channel {
   id: string
+  name: string | null      // Channel name
   username: string         // Telegram username with @ prefix
-  category: string
-  tgstat_url: string | null
-  collected_at: string
-  created_at: string
-  updated_at: string
   title: string | null
   description: string | null
-  member_count: number | null
-  is_verified: boolean
-  last_checked: string | null
-  is_active: boolean       // Deactivated after errors
-  error_count: number      // Consecutive error counter
-  last_error: string | null
+  tgstat_url: string | null
+  telegram_links: string[] | null  // Array of Telegram URLs
+  status: 'active' | 'inactive'    // Channel status
+  category: string | null  // Category from TGStat (e.g., investments)
+  subscribers: number | null
+  rkn_registered: boolean | null
+  collected_at: string | null
+  scraped_at: string | null
+  created_at: string
+  updated_at: string
+  author_created: string | null
+  author_updated: string | null
+  user_id: string | null   // Multi-tenancy owner (nullable for bulk imports)
 }
 
 /**
@@ -190,13 +195,12 @@ export type UserInsert = Omit<User, 'id' | 'created_at' | 'updated_at' | 'last_l
   last_login_at?: string | null
 }
 
-export type ChannelInsert = Omit<Channel, 'id' | 'created_at' | 'updated_at' | 'is_verified' | 'is_active' | 'error_count'> & {
+export type ChannelInsert = Omit<Channel, 'id' | 'created_at' | 'updated_at' | 'author_created' | 'author_updated'> & {
   id?: string
   created_at?: string
   updated_at?: string
-  is_verified?: boolean
-  is_active?: boolean
-  error_count?: number
+  author_created?: string | null
+  author_updated?: string | null
 }
 
 export type BatchInsert = Omit<Batch, 'id' | 'created_at' | 'updated_at' | 'channel_count'> & {

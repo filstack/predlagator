@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { Alert, AlertDescription } from '../components/ui/alert'
 import { useToast } from '../hooks/use-toast'
 import { apiClient } from '../lib/api-client'
+import { QRCodeSVG } from 'qrcode.react'
 
 interface TelegramSettings {
   apiId: string
@@ -22,7 +23,7 @@ interface RateLimitSettings {
   messageDelayMs: number
 }
 
-type AuthStep = 'credentials' | 'code' | 'password' | 'success'
+type AuthStep = 'credentials' | 'qr' | 'password' | 'success'
 
 export default function Settings() {
   const { toast } = useToast()
@@ -43,10 +44,11 @@ export default function Settings() {
   // Состояние аутентификации
   const [authStep, setAuthStep] = useState<AuthStep>('credentials')
   const [sessionId, setSessionId] = useState<string>('')
-  const [smsCode, setSmsCode] = useState<string>('')
+  const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
   const [password, setPassword] = useState<string>('')
   const [loading, setLoading] = useState(false)
   const [authenticatedUser, setAuthenticatedUser] = useState<any>(null)
+  const [pollingInterval, setPollingInterval] = useState<number | null>(null)
 
   useEffect(() => {
     // Load settings from localStorage
@@ -79,85 +81,102 @@ export default function Settings() {
     }
   }
 
-  // Шаг 1: Отправить SMS код
+  // Шаг 1: Сгенерировать QR код
   const handleStartAuth = async () => {
-    if (!telegramSettings.apiId || !telegramSettings.apiHash || !telegramSettings.phoneNumber) {
+    if (!telegramSettings.apiId || !telegramSettings.apiHash) {
       toast({
         variant: 'destructive',
         title: 'Ошибка валидации',
-        description: 'Заполните API ID, API Hash и номер телефона',
+        description: 'Заполните API ID и API Hash',
       })
       return
     }
 
     try {
       setLoading(true)
-      const data = await apiClient.post<{ success: boolean; sessionId: string; message: string }>(
-        '/auth-telegram/start',
+      const data = await apiClient.post<{
+        success: boolean;
+        sessionId: string;
+        qrCode: { token: string; loginUrl: string };
+        message: string
+      }>(
+        '/auth-telegram/qr-start',
         {
           apiId: telegramSettings.apiId,
           apiHash: telegramSettings.apiHash,
-          phone: telegramSettings.phoneNumber,
         }
       )
 
       setSessionId(data.sessionId)
-      setAuthStep('code')
+      setQrCodeUrl(data.qrCode.loginUrl)
+      setAuthStep('qr')
+
+      // Начинаем опрос статуса каждые 2 секунды
+      startPollingQrStatus(data.sessionId)
 
       toast({
-        title: 'SMS код отправлен',
-        description: data.message,
+        title: 'QR код сгенерирован',
+        description: 'Отсканируйте его в приложении Telegram',
       })
     } catch (error: any) {
       toast({
         variant: 'destructive',
         title: 'Ошибка',
-        description: error.response?.data?.details || 'Не удалось отправить код',
+        description: error.response?.data?.details || 'Не удалось сгенерировать QR код',
       })
     } finally {
       setLoading(false)
     }
   }
 
-  // Шаг 2: Проверить SMS код
-  const handleVerifyCode = async () => {
-    if (!smsCode) {
-      toast({
-        variant: 'destructive',
-        title: 'Ошибка',
-        description: 'Введите SMS код',
-      })
-      return
-    }
+  // Опрос статуса QR кода
+  const startPollingQrStatus = (sessionId: string) => {
+    const interval = window.setInterval(async () => {
+      try {
+        const data = await apiClient.post<{
+          success: boolean;
+          needPassword?: boolean;
+          status?: string;
+          sessionString?: string;
+          user?: any;
+          message?: string;
+        }>(
+          '/auth-telegram/qr-check',
+          { sessionId }
+        )
 
-    try {
-      setLoading(true)
-      const data = await apiClient.post<any>('/auth-telegram/verify-code', {
-        sessionId,
-        code: smsCode,
-      })
-
-      if (data.needPassword) {
-        // Требуется 2FA пароль
-        setAuthStep('password')
-        toast({
-          title: 'Требуется 2FA',
-          description: data.message,
-        })
-      } else if (data.success) {
-        // Успешная аутентификация
-        handleAuthSuccess(data)
+        if (data.success && data.sessionString) {
+          // QR код отсканирован и вход успешен!
+          clearInterval(interval)
+          setPollingInterval(null)
+          handleAuthSuccess(data)
+        } else if (data.needPassword) {
+          // QR код отсканирован, но требуется 2FA пароль
+          clearInterval(interval)
+          setPollingInterval(null)
+          setAuthStep('password')
+          toast({
+            title: 'Требуется 2FA',
+            description: data.message || 'Введите пароль двухфакторной аутентификации',
+          })
+        }
+      } catch (error) {
+        // Игнорируем ошибки опроса
       }
-    } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Ошибка',
-        description: error.response?.data?.details || 'Неверный код',
-      })
-    } finally {
-      setLoading(false)
-    }
+    }, 2000)
+
+    setPollingInterval(interval)
   }
+
+  // Остановить опрос при размонтировании
+  useEffect(() => {
+    return () => {
+      if (pollingInterval) {
+        clearInterval(pollingInterval)
+      }
+    }
+  }, [pollingInterval])
+
 
   // Шаг 3: Проверить 2FA пароль
   const handleVerifyPassword = async () => {
@@ -172,7 +191,12 @@ export default function Settings() {
 
     try {
       setLoading(true)
-      const data = await apiClient.post<any>('/auth-telegram/verify-password', {
+
+      // Определяем, QR сессия или phone-based по sessionId
+      const isQrSession = sessionId.startsWith('qr_')
+      const endpoint = isQrSession ? '/auth-telegram/qr-verify-password' : '/auth-telegram/verify-password'
+
+      const data = await apiClient.post<any>(endpoint, {
         sessionId,
         password,
       })
@@ -208,25 +232,33 @@ export default function Settings() {
     setPassword('')
     setSessionId('')
 
-    // Обновляем session string на бэкенде
+    // Сохраняем все credentials на бэкенде (в .env файл)
     try {
-      await apiClient.post('/auth-telegram/update-session', {
+      await apiClient.post('/auth-telegram/save-credentials', {
+        apiId: telegramSettings.apiId,
+        apiHash: telegramSettings.apiHash,
         sessionString: data.sessionString,
       })
-      console.log('✓ Session string обновлён на бэкенде')
+      console.log('✓ Telegram credentials сохранены на бэкенде в .env')
     } catch (error) {
-      console.error('Ошибка обновления session на бэкенде:', error)
+      console.error('Ошибка сохранения credentials на бэкенде:', error)
       // Не показываем ошибку пользователю, т.к. аутентификация прошла успешно
     }
 
     toast({
       title: 'Успех!',
-      description: `Добро пожаловать, ${data.user.firstName}!`,
+      description: `Добро пожаловать, ${data.user.firstName}! Настройки сохранены в .env файл.`,
     })
   }
 
   // Отмена аутентификации
   const handleCancelAuth = async () => {
+    // Останавливаем опрос
+    if (pollingInterval) {
+      clearInterval(pollingInterval)
+      setPollingInterval(null)
+    }
+
     if (sessionId) {
       try {
         await apiClient.post('/auth-telegram/cancel', { sessionId })
@@ -236,7 +268,7 @@ export default function Settings() {
     }
 
     setAuthStep('credentials')
-    setSmsCode('')
+    setQrCodeUrl('')
     setPassword('')
     setSessionId('')
   }
@@ -366,76 +398,72 @@ export default function Settings() {
                     </p>
                   </div>
 
-                  <div>
-                    <Label htmlFor="phoneNumber">Phone Number</Label>
-                    <Input
-                      id="phoneNumber"
-                      type="tel"
-                      placeholder="+1234567890"
-                      value={telegramSettings.phoneNumber}
-                      onChange={(e) =>
-                        setTelegramSettings({ ...telegramSettings, phoneNumber: e.target.value })
-                      }
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Phone number associated with your Telegram account (with country code)
-                    </p>
-                  </div>
-
                   <Button
                     onClick={handleStartAuth}
                     className="w-full"
                     disabled={loading}
                   >
-                    {loading ? 'Отправка кода...' : 'Отправить SMS код'}
+                    {loading ? 'Генерация QR кода...' : 'Войти через QR код'}
                   </Button>
 
                   <Alert>
                     <AlertDescription className="text-sm">
-                      После нажатия кнопки на ваш телефон придёт SMS с кодом подтверждения.
+                      Нажмите кнопку, чтобы сгенерировать QR код для входа через Telegram.
                     </AlertDescription>
                   </Alert>
                 </>
-              ) : authStep === 'code' ? (
-                // Шаг 2: Ввод SMS кода
+              ) : authStep === 'qr' ? (
+                // Шаг 2: Показываем QR код
                 <>
                   <Alert className="bg-blue-50 border-blue-200">
                     <AlertDescription className="text-blue-800">
-                      SMS код отправлен на номер {telegramSettings.phoneNumber}
+                      Отсканируйте QR код в приложении Telegram
                     </AlertDescription>
                   </Alert>
 
-                  <div>
-                    <Label htmlFor="smsCode">SMS код</Label>
-                    <Input
-                      id="smsCode"
-                      type="text"
-                      placeholder="12345"
-                      value={smsCode}
-                      onChange={(e) => setSmsCode(e.target.value)}
-                      maxLength={5}
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Введите код из SMS сообщения
-                    </p>
-                  </div>
+                  {qrCodeUrl && (
+                    <div className="flex flex-col items-center space-y-4">
+                      <div className="bg-white p-4 rounded-lg shadow-md">
+                        <QRCodeSVG
+                          value={qrCodeUrl}
+                          size={256}
+                          level="M"
+                          includeMargin={true}
+                        />
+                      </div>
 
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={handleVerifyCode}
-                      className="flex-1"
-                      disabled={loading}
-                    >
-                      {loading ? 'Проверка...' : 'Подтвердить код'}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={handleCancelAuth}
-                      disabled={loading}
-                    >
-                      Отмена
-                    </Button>
-                  </div>
+                      <div className="text-center text-sm text-muted-foreground space-y-2">
+                        <p>📱 <strong>На телефоне:</strong></p>
+                        <p>1. Откройте Telegram</p>
+                        <p>2. Settings → Devices → Link Desktop Device</p>
+                        <p>3. Отсканируйте QR код выше</p>
+                        <div className="pt-2">
+                          <p className="text-xs">Или нажмите кнопку ниже на этом устройстве:</p>
+                          <Button
+                            variant="link"
+                            size="sm"
+                            onClick={() => window.open(qrCodeUrl, '_blank')}
+                            className="mt-1"
+                          >
+                            Открыть в Telegram
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full"></div>
+                        <span>Ожидание сканирования...</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <Button
+                    variant="outline"
+                    onClick={handleCancelAuth}
+                    className="w-full"
+                  >
+                    Отмена
+                  </Button>
                 </>
               ) : authStep === 'password' ? (
                 // Шаг 3: Ввод 2FA пароля

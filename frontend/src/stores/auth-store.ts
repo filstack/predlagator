@@ -35,13 +35,27 @@ export const useAuthStore = create<AuthState>()(
       login: async (credentials: LoginInput) => {
         set({ isLoading: true, error: null })
         try {
-          const response = await apiClient.post<{ token: string; user: User }>(
+          // Backend возвращает: { user: {...}, session: { access_token, ... } }
+          const response = await apiClient.post<{
+            user: any;
+            session: { access_token: string; refresh_token: string }
+          }>(
             '/auth/login',
             credentials
           )
-          apiClient.setToken(response.token)
+
+          // Сохраняем access_token из Supabase session
+          apiClient.setToken(response.session.access_token)
+
+          // Преобразуем Supabase user в наш формат
+          const user: User = {
+            userId: response.user.id,
+            username: response.user.email.split('@')[0], // Используем часть email как username
+            role: 'OPERATOR', // Default role
+          }
+
           set({
-            user: response.user,
+            user,
             isAuthenticated: true,
             isLoading: false,
           })
@@ -57,13 +71,27 @@ export const useAuthStore = create<AuthState>()(
       register: async (data: RegisterInput) => {
         set({ isLoading: true, error: null })
         try {
-          const response = await apiClient.post<{ token: string; user: User }>(
+          // Backend возвращает: { user: {...}, session: { access_token, ... } }
+          const response = await apiClient.post<{
+            user: any;
+            session: { access_token: string; refresh_token: string }
+          }>(
             '/auth/register',
             data
           )
-          apiClient.setToken(response.token)
+
+          // Сохраняем access_token из Supabase session
+          apiClient.setToken(response.session.access_token)
+
+          // Преобразуем Supabase user в наш формат
+          const user: User = {
+            userId: response.user.id,
+            username: data.username || response.user.email.split('@')[0],
+            role: data.role || 'OPERATOR',
+          }
+
           set({
-            user: response.user,
+            user,
             isAuthenticated: true,
             isLoading: false,
           })
@@ -88,13 +116,25 @@ export const useAuthStore = create<AuthState>()(
       checkAuth: async () => {
         const token = localStorage.getItem('auth_token')
         if (!token) {
-          set({ isAuthenticated: false, user: null })
+          set({ isAuthenticated: false, user: null, isLoading: false })
           return
         }
 
         set({ isLoading: true })
         try {
-          const user = await apiClient.get<User>('/auth/me')
+          // Backend возвращает: { user: {...}, profile: { id, username, email, role, ... } }
+          const response = await apiClient.get<{
+            user: any;
+            profile: { id: string; username?: string; email?: string; role?: string } | null
+          }>('/auth/me')
+
+          // Преобразуем в наш формат
+          const user: User = {
+            userId: response.user.id,
+            username: response.profile?.username || response.user.email?.split('@')[0] || 'User',
+            role: response.profile?.role || 'OPERATOR',
+          }
+
           set({
             user,
             isAuthenticated: true,
