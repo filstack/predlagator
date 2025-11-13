@@ -347,6 +347,12 @@ router.post('/qr-check', async (req, res) => {
 
         fs.writeFileSync(envPath, envContent, 'utf8')
         console.log('✅ Сессия сохранена в .env файл')
+
+        // Обновляем глобальную сессию в telegramClient
+        process.env.TELEGRAM_SESSION = sessionString
+        const { telegramClient } = require('../lib/telegram-client')
+        await telegramClient.updateSession(sessionString)
+        console.log('✅ Глобальная сессия telegramClient обновлена')
       } catch (saveError: any) {
         console.error('⚠️ Не удалось сохранить сессию в .env:', saveError.message)
       }
@@ -461,6 +467,12 @@ router.post('/qr-verify-password', async (req, res) => {
 
       fs.writeFileSync(envPath, envContent, 'utf8')
       console.log('✅ Сессия сохранена в .env файл')
+
+      // Обновляем глобальную сессию в telegramClient
+      process.env.TELEGRAM_SESSION = sessionString
+      const { telegramClient } = require('../lib/telegram-client')
+      await telegramClient.updateSession(sessionString)
+      console.log('✅ Глобальная сессия telegramClient обновлена')
     } catch (saveError: any) {
       console.error('⚠️ Не удалось сохранить сессию в .env:', saveError.message)
     }
