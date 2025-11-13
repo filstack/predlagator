@@ -1,8 +1,24 @@
-# Инструкция по деплою проекта на vedbot.ru/pred
+# 🚀 Deployment Guide - Production Server (UPDATED 2025-11-13)
+
+## 📍 Current Production Environment
+
+### Server Information
+- **Server**: Ubuntu VPS
+- **Domain**: `vedbot.ru`
+- **Project Path**: `/var/www/predlagator`
+- **Frontend**: `https://vedbot.ru/pred`
+- **Backend API**: `https://vedbot.ru/pred/api`
+- **Node.js**: v20.19.5
+- **Branch**: `004-manual-channel-management`
+
+### Active Ports
+- **3000**: electra-dashboard (Next.js)
+- **3001**: predlagator-api (Express + TypeScript)
+- **80/443**: nginx (HTTP/HTTPS)
 
 ## Предварительные требования
 
-- Сервер Ubuntu (217.26.24.162)
+- Сервер Ubuntu (VPS)
 - Домен vedbot.ru настроен на этот сервер
 - SSH доступ к серверу
 - Supabase проект настроен
@@ -91,15 +107,16 @@ SUPABASE_SERVICE_ROLE_KEY=ваш_service_role_key
 SUPABASE_DIRECT_URL=postgresql://postgres.qjnxcjbzwelokluaiqmk:ваш_пароль@aws-0-eu-central-1.pooler.supabase.com:5432/postgres
 
 # Server
-PORT=5000
+PORT=3001  # ← ВАЖНО: Порт 3001 (не 3000, занят electra-dashboard!)
 NODE_ENV=production
 
 # CORS (разрешенные origins)
 CORS_ORIGIN=https://vedbot.ru
 
-# Telegram (если используется)
-TELEGRAM_API_ID=ваш_api_id
+# Telegram (user-specific, обновляется после QR авторизации)
+TELEGRAM_API_ID=21682307
 TELEGRAM_API_HASH=ваш_api_hash
+TELEGRAM_SESSION=  # Заполняется автоматически после QR auth
 
 # Sessions
 SESSION_SECRET=ваш_длинный_случайный_секрет
@@ -127,10 +144,12 @@ nano .env.production
 **Содержимое `.env.production` файла:**
 
 ```env
-VITE_API_URL=https://vedbot.ru/pred/api
+VITE_API_URL=http://localhost:3001/api  # ← Порт 3001!
 VITE_SUPABASE_URL=https://qjnxcjbzwelokluaiqmk.supabase.co
 VITE_SUPABASE_ANON_KEY=ваш_anon_key
 ```
+
+**Примечание**: На production nginx проксирует `/pred/api` на `localhost:3001`, поэтому frontend обращается к `vedbot.ru/pred/api`, а nginx перенаправляет на внутренний порт 3001.
 
 ```bash
 # Сборка production версии
@@ -157,13 +176,14 @@ module.exports = {
   apps: [
     {
       name: 'predlagator-api',
-      script: './backend/dist/server.js',
-      cwd: '/var/www/predlagator',
+      script: 'npm',
+      args: 'run dev',  // tsx watch src/server.ts
+      cwd: '/var/www/predlagator/backend',
       instances: 1,
-      exec_mode: 'cluster',
+      exec_mode: 'fork',  // fork, не cluster (для tsx watch)
       env: {
         NODE_ENV: 'production',
-        PORT: 5000
+        PORT: 3001  // ← Порт 3001!
       },
       error_file: './logs/api-error.log',
       out_file: './logs/api-out.log',
@@ -172,8 +192,9 @@ module.exports = {
     },
     {
       name: 'predlagator-worker',
-      script: './backend/dist/worker-server.js',
-      cwd: '/var/www/predlagator',
+      script: 'npm',
+      args: 'run worker',  // tsx watch src/polling-worker-server.ts
+      cwd: '/var/www/predlagator/backend',
       instances: 1,
       exec_mode: 'fork',
       env: {
@@ -187,6 +208,8 @@ module.exports = {
   ]
 };
 ```
+
+**Примечание**: На production используем `tsx watch` для горячей перезагрузки при изменении файлов.
 
 ### 3.2. Запуск приложения через PM2
 
@@ -684,4 +707,137 @@ sudo systemctl reload nginx
 3. Статус процессов: `pm2 status`
 4. Конфигурация Nginx: `sudo nginx -t`
 
+---
+
+## 📊 Current Production Setup (2025-11-13)
+
+### PM2 Processes
+```bash
+pm2 list
+# predlagator-api: npm run dev (tsx watch src/server.ts) - Port 3001
+# predlagator-worker: npm run worker (tsx watch src/polling-worker-server.ts)
+# electra-dashboard: Next.js - Port 3000
+```
+
+### Nginx Configuration (vedbot.ru)
+```nginx
+location /pred {
+    alias /var/www/predlagator/frontend/dist;
+    try_files $uri $uri/ /pred/index.html;
+}
+
+location /pred/api/ {
+    rewrite ^/pred/api/(.*)$ /api/$1 break;
+    proxy_pass http://127.0.0.1:3001;  # ← PORT 3001!
+    ...
+}
+```
+
+### Environment Variables
+
+**backend/.env**:
+```bash
+PORT=3001  # ← CRITICAL: Must be 3001 (3000 occupied by electra-dashboard)
+TELEGRAM_SESSION=<updated_after_qr_auth>
+SUPABASE_URL=https://qjnxcjbzwelokluaiqmk.supabase.co
+SUPABASE_DIRECT_URL=postgres://...
+```
+
+**frontend/.env**:
+```bash
+VITE_API_URL=http://localhost:3001/api  # ← Must match backend PORT
+```
+
+### Recent Issues Fixed
+
+#### 1. Port Conflict (2025-11-13)
+- **Issue**: API tried to use port 3000 (occupied by electra-dashboard)
+- **Solution**: Changed to port 3001 in `backend/.env` and nginx config
+
+#### 2. Telegram Session Not Persisting (2025-11-13)
+- **Issue**: `AUTH_KEY_UNREGISTERED` after QR auth & page reload
+- **Solution**: Updated `auth-telegram.ts` to call `telegramClient.updateSession()` after saving to `.env`
+- **Commit**: `878fbf3a`
+
+#### 3. tsx: not found (recurring)
+- **Issue**: After `git pull`, PM2 cannot find tsx binary
+- **Solution**: Run `npm install` in backend directory, then `pm2 restart --update-env`
+
+### Deployment Workflow
+
+```bash
+# 1. On server
+cd /var/www/predlagator
+
+# 2. Stash local changes (.env files)
+git stash
+
+# 3. Pull latest code
+git pull --rebase origin 004-manual-channel-management
+
+# 4. Restore .env changes
+git stash pop
+
+# 5. Install dependencies (if package.json changed)
+cd backend && npm install
+
+# 6. Restart PM2 with updated env
+pm2 restart predlagator-api --update-env
+pm2 restart predlagator-worker --update-env
+
+# 7. Check logs
+pm2 logs predlagator-api --lines 30
+```
+
+### Common Commands
+
+```bash
+# Check port usage
+lsof -i:3000
+lsof -i:3001
+
+# View logs
+pm2 logs predlagator-api --lines 100
+pm2 logs predlagator-api --err --lines 50
+
+# Restart with env update
+pm2 restart predlagator-api --update-env
+
+# Check nginx config
+sudo nginx -t
+sudo systemctl reload nginx
+
+# Monitor processes
+pm2 monit
+pm2 status
+```
+
+### Architecture Summary
+
+```
+Client (Browser)
+    ↓
+nginx (80/443) → SSL/TLS
+    ↓
+/pred → static files (React SPA)
+/pred/api → proxy to localhost:3001
+    ↓
+Express API (port 3001)
+    ↓
+Telegram Client (GramJS)
+Supabase (PostgreSQL + Auth)
+pg-boss (job queue)
+```
+
+### Files to Never Commit
+- `backend/.env` (contains secrets)
+- `frontend/.env` (local config)
+- `*.session` (Telegram session files)
+- `node_modules/`
+
+---
+
 Удачного деплоя! 🚀
+
+**Last Updated**: 2025-11-13
+**Current Branch**: `004-manual-channel-management`
