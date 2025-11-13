@@ -10,9 +10,15 @@ export interface Channel {
   name: string;
   username: string;
   title: string | null;
+  description: string | null;
   tgstat_url: string | null;
   telegram_links: string[];
   status: ChannelStatus;
+  category: string | null;
+  subscribers: number | null;
+  rkn_registered: boolean | null;
+  collected_at: string | null;
+  scraped_at: string | null;
   created_at: string;
   updated_at: string;
   author_created: string | null;

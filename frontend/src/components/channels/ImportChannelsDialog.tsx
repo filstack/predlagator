@@ -115,10 +115,10 @@ export function ImportChannelsDialog({ isOpen, onClose, onSuccess }: ImportChann
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Импортировать каналы из файла</DialogTitle>
+          <DialogTitle>Импортировать каналы из TGStat</DialogTitle>
           <DialogDescription>
-            Загрузите JSONL файл с каналами для импорта. Файл должен содержать записи с полями:
-            category, tgstat_url, username.
+            Загрузите NDJSON файл с результатами скрейпинга TGStat. Файл должен содержать записи
+            с полями: username, category, tgstat_url, scraped_content (с title, subscribers, telegram_links).
           </DialogDescription>
         </DialogHeader>
 

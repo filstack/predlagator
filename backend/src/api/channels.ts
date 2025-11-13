@@ -8,8 +8,6 @@
 
 import { Router, Request, Response, NextFunction } from 'express';
 import multer from 'multer';
-import { Readable } from 'stream';
-import * as readline from 'readline';
 import { channelService } from '../services/channel-service';
 import { validate, validateMultiple } from '../middleware/validate';
 import { authenticate } from '../middleware/auth';
@@ -20,7 +18,7 @@ import {
   channelIdSchema,
   checkUsernameSchema,
 } from '../types/channel-validation';
-import { supabase } from '../lib/supabase';
+import { getSupabase } from '../lib/supabase';
 
 // Configure multer for file upload (memory storage)
 const upload = multer({
@@ -272,23 +270,29 @@ router.post(
       let errors = 0;
       const errorMessages: string[] = [];
 
-      // Create readable stream from buffer
-      const stream = Readable.from(req.file.buffer.toString('utf-8').split('\n'));
-      const rl = readline.createInterface({
-        input: stream,
-        crlfDelay: Infinity,
-      });
+      // Parse NDJSON: split by actual newlines, not escaped ones
+      const fileContent = req.file.buffer.toString('utf-8');
+      const lines = fileContent.split('\n').filter(line => line.trim());
 
-      for await (const line of rl) {
-        if (!line.trim()) continue; // Skip empty lines
+      console.log(`📋 Found ${lines.length} lines in file\n`);
 
+      for (const line of lines) {
         try {
+          // Parse JSON line
           const record = JSON.parse(line);
-          console.log('🔄 Processing:', record.username);
+          console.log('🔄 Processing:', record.username || 'unknown');
+
+          // Skip records without successful scraping
+          if (record.status !== 'success' || !record.scraped_content) {
+            skipped++;
+            console.log('  ⏭ Skipped: no successful scraping data');
+            continue;
+          }
 
           // Пропускаем записи без username
           if (!record.username || record.username === 'unknown') {
             skipped++;
+            console.log('  ⏭ Skipped: no username');
             continue;
           }
 
@@ -298,18 +302,30 @@ router.post(
             try {
               scrapedData = JSON.parse(record.scraped_content);
             } catch (e) {
-              // Ignore scraped_content parse errors
+              console.error('  ⚠️  Failed to parse scraped_content:', e);
+              skipped++;
+              continue;
             }
           }
 
-          // Extract data
+          // Parse subscribers (remove spaces and convert to number)
+          const subscribersStr = scrapedData?.subscribers?.replace(/\s/g, '') || '0';
+          const subscribers = parseInt(subscribersStr, 10) || 0;
+
+          // Extract data from record and scraped content
           const username = record.username.startsWith('@') ? record.username : `@${record.username}`;
           const title = scrapedData?.title || null;
-          const name = record.category || username; // Use category as name
+          const description = scrapedData?.description || null;
+          const name = title || record.category || username; // Use title or category as name
           const tgstat_url = record.tgstat_url || null;
-          const telegram_links = scrapedData?.links || [];
+          const telegram_links = scrapedData?.telegram_links || [];
+          const category = record.category || 'uncategorized';
+          const rkn_registered = scrapedData?.rkn_registered || false;
+          const collected_at = record.collected_at || null;
+          const scraped_at = record.scraped_at || scrapedData?.extracted_at || null;
 
           // Check if channel exists (by username and user_id)
+          const supabase = getSupabase();
           const { data: existing } = await supabase
             .from('channels')
             .select('id, updated_at')
@@ -325,8 +341,14 @@ router.post(
               .update({
                 name,
                 title,
+                description,
                 tgstat_url,
                 telegram_links,
+                category,
+                subscribers,
+                rkn_registered,
+                collected_at,
+                scraped_at,
                 updated_at: new Date().toISOString(),
               })
               .eq('id', existing.id);
@@ -349,8 +371,14 @@ router.post(
                 name,
                 username,
                 title,
+                description,
                 tgstat_url,
                 telegram_links,
+                category,
+                subscribers,
+                rkn_registered,
+                collected_at,
+                scraped_at,
                 status: 'active',
               });
 
@@ -365,8 +393,12 @@ router.post(
           }
         } catch (error: any) {
           console.error('  ✗ Line processing error:', error.message);
+          console.error('  Line preview:', line.substring(0, 100) + '...');
           errors++;
-          errorMessages.push(`Error processing line: ${error.message}`);
+          const errorMsg = `Error processing line: ${error.message}`;
+          if (!errorMessages.includes(errorMsg)) {
+            errorMessages.push(errorMsg);
+          }
         }
       }
 

@@ -77,20 +77,27 @@ export interface User {
 /**
  * Channel table (channels)
  * Feature: 004-manual-channel-management
+ * Updated: Migration 006 - Added TGStat fields
  */
 export interface Channel {
   id: string
-  name: string             // Channel name
+  name: string | null      // Channel name
   username: string         // Telegram username with @ prefix
   title: string | null
+  description: string | null
   tgstat_url: string | null
   telegram_links: string[] | null  // Array of Telegram URLs
   status: 'active' | 'inactive'    // Channel status
+  category: string | null  // Category from TGStat (e.g., investments)
+  subscribers: number | null
+  rkn_registered: boolean | null
+  collected_at: string | null
+  scraped_at: string | null
   created_at: string
   updated_at: string
   author_created: string | null
   author_updated: string | null
-  user_id: string          // Multi-tenancy owner
+  user_id: string | null   // Multi-tenancy owner (nullable for bulk imports)
 }
 
 /**

@@ -5,12 +5,18 @@
  * Карточка для отображения информации о канале с кнопками действий
  */
 
-import { Edit, Trash2, ExternalLink } from 'lucide-react'
+import { Edit, Trash2, ExternalLink, Users } from 'lucide-react'
 import type { Channel } from '../../types/channel'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
 import { formatDate } from '../../lib/formatters'
+
+// Format number with spaces (e.g., 1234567 -> 1 234 567)
+const formatNumber = (num: number | null | undefined): string => {
+  if (!num) return '0'
+  return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
+}
 
 interface ChannelCardProps {
   channel: Channel
@@ -22,9 +28,9 @@ export function ChannelCard({ channel, onEdit, onDelete }: ChannelCardProps) {
   return (
     <Card className="hover:shadow-md transition-shadow">
       <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-        <div className="space-y-1">
+        <div className="space-y-1 flex-1">
           <CardTitle className="text-lg font-bold">{channel.name}</CardTitle>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
             <span className="font-mono">{channel.username}</span>
             {channel.status === 'active' ? (
               <Badge variant="default" className="text-xs">
@@ -35,7 +41,25 @@ export function ChannelCard({ channel, onEdit, onDelete }: ChannelCardProps) {
                 Неактивен
               </Badge>
             )}
+            {channel.category && (
+              <Badge variant="outline" className="text-xs">
+                {channel.category}
+              </Badge>
+            )}
+            {channel.rkn_registered && (
+              <Badge variant="secondary" className="text-xs bg-green-100 text-green-800">
+                РКН
+              </Badge>
+            )}
           </div>
+          {/* Subscribers count */}
+          {channel.subscribers != null && channel.subscribers > 0 && (
+            <div className="flex items-center gap-1 text-sm text-muted-foreground">
+              <Users className="h-4 w-4" />
+              <span className="font-semibold">{formatNumber(channel.subscribers)}</span>
+              <span>подписчиков</span>
+            </div>
+          )}
         </div>
         <div className="flex gap-2">
           <Button
@@ -62,8 +86,16 @@ export function ChannelCard({ channel, onEdit, onDelete }: ChannelCardProps) {
           {/* Title */}
           {channel.title && (
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Title</p>
+              <p className="text-sm font-medium text-muted-foreground">Название</p>
               <p className="text-sm">{channel.title}</p>
+            </div>
+          )}
+
+          {/* Description */}
+          {channel.description && (
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Описание</p>
+              <p className="text-sm text-muted-foreground">{channel.description}</p>
             </div>
           )}
 
@@ -109,10 +141,13 @@ export function ChannelCard({ channel, onEdit, onDelete }: ChannelCardProps) {
           )}
 
           {/* Metadata */}
-          <div className="pt-2 border-t text-xs text-muted-foreground">
+          <div className="pt-2 border-t text-xs text-muted-foreground space-y-1">
             <p>Создан: {formatDate(channel.created_at)}</p>
             {channel.updated_at !== channel.created_at && (
               <p>Обновлён: {formatDate(channel.updated_at)}</p>
+            )}
+            {channel.scraped_at && (
+              <p>Данные от TGStat: {formatDate(channel.scraped_at)}</p>
             )}
           </div>
         </div>
