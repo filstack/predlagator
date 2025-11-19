@@ -14,6 +14,7 @@ interface ChannelState {
   currentPage: number
   isLoading: boolean
   error: string | null
+  syncingChannelId: string | null; // To track which channel is syncing
 
   // Actions
   fetchChannels: (query?: ChannelQuery) => Promise<void>
@@ -21,6 +22,7 @@ interface ChannelState {
   updateChannel: (id: string, data: Partial<Channel>) => Promise<Channel>
   deleteChannel: (id: string) => Promise<void>
   selectChannel: (channel: Channel | null) => void
+  syncChannel: (id: string) => Promise<void>; // New sync action
   clearError: () => void
 }
 
@@ -31,6 +33,7 @@ export const useChannelStore = create<ChannelState>((set, get) => ({
   currentPage: 1,
   isLoading: false,
   error: null,
+  syncingChannelId: null,
 
   fetchChannels: async (query?: ChannelQuery) => {
     set({ isLoading: true, error: null })
@@ -116,9 +119,27 @@ export const useChannelStore = create<ChannelState>((set, get) => ({
     }
   },
 
+  syncChannel: async (id: string) => {
+    set({ syncingChannelId: id, error: null });
+    try {
+      const updatedChannel = await apiClient.post<Channel>(`/channels/${id}/sync`);
+      set((state) => ({
+        channels: state.channels.map((ch) =>
+          ch.id === id ? { ...ch, ...updatedChannel } : ch
+        ),
+        syncingChannelId: null,
+      }));
+    } catch (error: any) {
+      set({
+        error: error.response?.data?.error || 'Failed to sync channel',
+        syncingChannelId: null,
+      });
+    }
+  },
+
   selectChannel: (channel: Channel | null) => {
     set({ selectedChannel: channel })
   },
 
   clearError: () => set({ error: null }),
-}))
+}));

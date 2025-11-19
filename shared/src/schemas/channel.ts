@@ -17,6 +17,7 @@ export const channelSchema = z.object({
   isActive: z.boolean().default(true),
   errorCount: z.number().int().default(0),
   lastError: z.string().nullable().optional(),
+  last_synced_at: z.date().nullable().optional(),
 })
 
 // Create channel input schema

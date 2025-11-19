@@ -150,3 +150,60 @@ process.on('SIGTERM', async () => {
 process.on('SIGINT', async () => {
   await telegramClient.disconnect()
 })
+
+/**
+ * Fetches the full channel details using a temporary client.
+ * This is useful for one-off operations without using the main singleton client.
+ * @param sessionString The session string for authentication.
+ * @param channelUsername The username of the channel to fetch.
+ * @returns The full channel object from the Telegram API.
+ */
+export const getFullChannel = async (sessionString: string, channelUsername: string) => {
+  if (!sessionString) {
+    throw new Error('A valid Telegram session string is required.');
+  }
+
+  const apiId = parseInt(process.env.TELEGRAM_API_ID || '');
+  const apiHash = process.env.TELEGRAM_API_HASH || '';
+
+  if (!apiId || !apiHash) {
+    throw new Error('TELEGRAM_API_ID and TELEGRAM_API_HASH must be configured.');
+  }
+
+  const tempSession = new StringSession(sessionString);
+  const tempClient = new TelegramClient(tempSession, apiId, apiHash, {
+    connectionRetries: 3,
+  });
+
+  try {
+    await tempClient.connect();
+    
+    const result = await tempClient.invoke(
+      new Api.channels.GetFullChannel({
+        channel: channelUsername,
+      })
+    );
+
+    if (!result || !result.fullChat) {
+      throw new Error('Could not retrieve full channel details.');
+    }
+    
+    // The result contains a lot of data, we extract what's most useful
+    const fullChat = result.fullChat as Api.ChannelFull;
+    const chat = result.chats.find(c => c.id.eq(fullChat.id)) as Api.Channel;
+
+    return {
+      id: fullChat.id,
+      title: chat?.title,
+      about: fullChat.about,
+      participantsCount: fullChat.participantsCount,
+      // You can expand this to return more fields from `fullChat` or `chat`
+    };
+
+  } finally {
+    // Ensure the temporary client is always disconnected
+    if (tempClient.connected) {
+      await tempClient.disconnect();
+    }
+  }
+};

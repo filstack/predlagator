@@ -1,4 +1,3 @@
-// frontend/src/pages/Channels.tsx
 import { useState, useEffect } from 'react'
 import { useChannelStore } from '../stores/channel-store'
 import {
@@ -13,7 +12,8 @@ import { Input } from '../components/ui/input'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
-import { formatDate, formatNumber } from '../lib/formatters'
+import { formatDate, formatNumber, formatRelativeTime } from '../lib/formatters'
+import { RefreshCw } from 'lucide-react'
 
 export default function Channels() {
   const channels = useChannelStore((state) => state.channels) || []
@@ -22,6 +22,8 @@ export default function Channels() {
   const totalCount = useChannelStore((state) => state.totalCount) || 0
   const currentPage = useChannelStore((state) => state.currentPage) || 1
   const fetchChannels = useChannelStore((state) => state.fetchChannels)
+  const syncChannel = useChannelStore((state) => state.syncChannel)
+  const syncingChannelId = useChannelStore((state) => state.syncingChannelId)
   const clearError = useChannelStore((state) => state.clearError)
 
   const [search, setSearch] = useState('')
@@ -39,6 +41,10 @@ export default function Channels() {
 
   const handleSearch = (value: string) => {
     setSearch(value)
+  }
+
+  const handleSync = async (id: string) => {
+    await syncChannel(id);
   }
 
   const handleNextPage = () => {
@@ -100,6 +106,8 @@ export default function Channels() {
                     <TableHead>Members</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Added</TableHead>
+                    <TableHead>Last Synced</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -123,6 +131,26 @@ export default function Channels() {
                         )}
                       </TableCell>
                       <TableCell>{formatDate(channel.createdAt)}</TableCell>
+                      <TableCell>
+                        {channel.last_synced_at
+                          ? formatRelativeTime(channel.last_synced_at)
+                          : 'Never'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleSync(channel.id)}
+                          disabled={syncingChannelId === channel.id}
+                        >
+                          <RefreshCw
+                            className={`mr-2 h-4 w-4 ${
+                              syncingChannelId === channel.id ? 'animate-spin' : ''
+                            }`}
+                          />
+                          Sync
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

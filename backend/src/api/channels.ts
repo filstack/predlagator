@@ -190,4 +190,63 @@ router.delete('/:id', async (req, res, next) => {
   }
 });
 
+// POST /api/channels/:id/sync - Sync channel data from Telegram
+router.post('/:id/sync', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const supabase = getSupabase();
+
+    // 1. Get the Telegram session from the dedicated table
+    const { data: telegramAccount, error: accountError } = await supabase
+      .from('telegram_accounts')
+      .select('session_string')
+      .eq('user_id', (req as any).user.id) // Assuming you have user context
+      .single();
+
+    if (accountError || !telegramAccount) {
+      throw new Error('Telegram account not connected or found.');
+    }
+
+    const { session_string: sessionString } = telegramAccount;
+
+    // 2. Get the channel username
+    const { data: channel, error: channelError } = await supabase
+      .from('channels')
+      .select('username')
+      .eq('id', id)
+      .single();
+
+    if (channelError || !channel) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    // 3. Use a temporary Telegram client to fetch channel info
+    const { getFullChannel } = require('../lib/telegram-client');
+    const fullChannel = await getFullChannel(sessionString, channel.username);
+
+    // 4. Update the channel in the database
+    const updateData = {
+      member_count: fullChannel.participantsCount,
+      title: fullChannel.title,
+      description: fullChannel.about,
+      last_synced_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data: updatedChannel, error: updateError } = await supabase
+      .from('channels')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateError) throw updateError;
+
+    res.json(updatedChannel);
+  } catch (error) {
+    next(error);
+  }
+});
+
+
 export default router;
